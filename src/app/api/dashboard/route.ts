@@ -14,7 +14,7 @@ export async function GET() {
   const [totalEmployees, presentRecords, activeEmployees, leaveToday, notifications, projects] = await Promise.all([
     db.employee.count({ where: { companyId, status: "ACTIVE" } }),
     db.attendance.findMany({
-      where: { date: today, employee: { companyId } },
+      where: { attendanceDate: today, employee: { companyId } },
       include: { employee: true, project: true },
     }),
     db.employee.count({ where: { companyId, status: "ACTIVE" } }),
@@ -26,9 +26,9 @@ export async function GET() {
     db.project.findMany({ where: { companyId }, include: { assignments: true } }),
   ]);
 
-  const present = presentRecords.filter((a) => a.status === "PRESENT" || a.status === "LATE").length;
+  const present = presentRecords.filter((a) => a.attendanceStatus === "PRESENT" || a.attendanceStatus === "LATE").length;
   const workingNow = presentRecords.filter((a) => !a.checkOut).length;
-  const late = presentRecords.filter((a) => a.status === "LATE").length;
+  const late = presentRecords.filter((a) => a.attendanceStatus === "LATE").length;
   const absent = activeEmployees - present - leaveToday.length;
   const onLeave = leaveToday.length;
   const presentPct = activeEmployees > 0 ? Math.round((present / activeEmployees) * 1000) / 10 : 0;
@@ -47,9 +47,9 @@ export async function GET() {
     d.setDate(d.getDate() - i);
     const dayRecords = await db.attendance.count({
       where: {
-        date: d,
+        attendanceDate: d,
         employee: { companyId },
-        status: { in: ["PRESENT", "LATE"] },
+        attendanceStatus: { in: ["PRESENT", "LATE"] },
       },
     });
     const totalActive = activeEmployees || 1;
@@ -64,9 +64,9 @@ export async function GET() {
     projects.map(async (p) => {
       const presentToday = await db.attendance.count({
         where: {
-          date: today,
+          attendanceDate: today,
           projectId: p.id,
-          status: { in: ["PRESENT", "LATE"] },
+          attendanceStatus: { in: ["PRESENT", "LATE"] },
         },
       });
       return {
@@ -98,7 +98,7 @@ export async function GET() {
 
   // Alerts
   const alerts = [];
-  const lateAlerts = presentRecords.filter((a) => a.status === "LATE").slice(0, 1);
+  const lateAlerts = presentRecords.filter((a) => a.attendanceStatus === "LATE").slice(0, 1);
   for (const a of lateAlerts) {
     alerts.push({
       id: `al-late-${a.id}`,
@@ -108,7 +108,7 @@ export async function GET() {
       employee: a.employee.firstName,
     });
   }
-  const notCheckedOut = presentRecords.filter((a) => !a.checkOut && a.status === "PRESENT").length;
+  const notCheckedOut = presentRecords.filter((a) => !a.checkOut && a.attendanceStatus === "PRESENT").length;
   if (notCheckedOut > 0) {
     alerts.push({
       id: "al-no-checkout",

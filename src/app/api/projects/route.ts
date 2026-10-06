@@ -15,15 +15,15 @@ export async function GET() {
     where: { companyId },
     include: {
       assignments: { include: { employee: true } },
-      attendance: { where: { date: today } },
+      attendance: { where: { attendanceDate: today } },
     },
     orderBy: { createdAt: "asc" },
   });
 
   const result = projects.map((p) => {
-    const presentToday = p.attendance.filter((a) => a.status === "PRESENT" || a.status === "LATE").length;
+    const presentToday = p.attendance.filter((a) => a.attendanceStatus === "PRESENT" || a.attendanceStatus === "LATE").length;
     const workingNow = p.attendance.filter((a) => !a.checkOut).length;
-    const lateToday = p.attendance.filter((a) => a.status === "LATE").length;
+    const lateToday = p.attendance.filter((a) => a.attendanceStatus === "LATE").length;
     const absentToday = Math.max(0, p.assignments.length - presentToday);
     return {
       id: p.id,

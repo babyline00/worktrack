@@ -14,6 +14,7 @@ import {
   LifeBuoy,
   Bell,
   MoreVertical,
+  Code2,
 } from "lucide-react";
 import { useApp, type PageKey } from "@/lib/store";
 import { cn } from "@/lib/utils";
@@ -41,7 +42,10 @@ const NAV: {
     ],
   },
   {
-    items: [{ key: "reports", label: "Reports", icon: FileBarChart }],
+    items: [
+      { key: "reports", label: "Reports", icon: FileBarChart },
+      { key: "api-docs", label: "API Docs", icon: Code2 },
+    ],
   },
 ];
 

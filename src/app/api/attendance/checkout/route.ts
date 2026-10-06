@@ -3,8 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
 
-// POST /api/attendance/checkout
-// body: { employeeId, lat, lng, accuracy, photo (base64), location }
+// POST /api/attendance/checkout (legacy)
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -18,14 +17,10 @@ export async function POST(req: Request) {
   today.setHours(0, 0, 0, 0);
 
   const existing = await db.attendance.findFirst({
-    where: { employeeId, date: today },
+    where: { employeeId, attendanceDate: today },
   });
-  if (!existing?.checkIn) {
-    return NextResponse.json({ error: "Not checked in yet" }, { status: 400 });
-  }
-  if (existing.checkOut) {
-    return NextResponse.json({ error: "Already checked out" }, { status: 400 });
-  }
+  if (!existing?.checkIn) return NextResponse.json({ error: "Not checked in yet" }, { status: 400 });
+  if (existing.checkOut) return NextResponse.json({ error: "Already checked out" }, { status: 400 });
 
   const now = new Date();
   const workingMins = Math.max(0, Math.round((now.getTime() - existing.checkIn.getTime()) / 60000));
@@ -37,16 +32,19 @@ export async function POST(req: Request) {
       checkOutLat: body.lat,
       checkOutLng: body.lng,
       checkOutAccuracy: body.accuracy,
-      checkOutPhoto: body.photo,
       checkOutLocation: body.location,
+      checkOutCapturedAt: now,
+      checkOutServerReceivedAt: now,
       workingMins,
+      sessionStatus: "COMPLETED",
     },
   });
 
   await db.notification.create({
     data: {
+      companyId: existing.companyId,
       type: "ATTENDANCE",
-      title: `${(session.user as any).name ?? "Employee"} checked out`,
+      title: `${user.name ?? "Employee"} checked out`,
       description: `${now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })} • ${formatMins(workingMins)} worked`,
       timeAgo: "Just now",
       unread: true,

@@ -1,0 +1,2002 @@
+     1→Bilkul. Neeche **WorkTrack** ka complete end-to-end **Backend + Android Mobile App API Blueprint** hai. Isko aap developer ko directly de sakte ho. Main API contracts, database entities, authentication, attendance flow, GPS/photo verification, real-time tracking aur admin dashboard integration sab cover kar raha hoon.
+     2→
+     3→# WorkTrack — Backend & Mobile API Specification
+     4→
+     5→## 1. System Architecture
+     6→
+     7→```text
+     8→                         WORKTRACK SYSTEM
+     9→
+    10→       ┌───────────────────────────────┐
+    11→       │       Android Employee App    │
+    12→       │                               │
+    13→       │ Login                         │
+    14→       │ Projects                      │
+    15→       │ Check-In / Check-Out          │
+    16→       │ Camera                        │
+    17→       │ GPS                           │
+    18→       │ Attendance History             │
+    19→       └───────────────┬───────────────┘
+    20→                       │
+    21→                    HTTPS
+    22→                       │
+    23→                       ▼
+    24→       ┌────────────────────────────────┐
+    25→       │          BACKEND API            │
+    26→       │                                │
+    27→       │ Authentication                │
+    28→       │ Employees                     │
+    29→       │ Projects                      │
+    30→       │ Attendance                    │
+    31→       │ GPS / Geofence                │
+    32→       │ Photo Verification             │
+    33→       │ Reports                       │
+    34→       │ Notifications                 │
+    35→       │ Permissions                   │
+    36→       └──────────────┬─────────────────┘
+    37→                      │
+    38→          ┌───────────┼──────────────┐
+    39→          │           │              │
+    40→          ▼           ▼              ▼
+    41→     PostgreSQL    Object Storage   Redis
+    42→     Database      Photos/Files     Cache
+    43→          │
+    44→          │
+    45→          ▼
+    46→     WebSocket Server
+    47→          │
+    48→          ▼
+    49→     Admin Dashboard
+    50→```
+    51→
+    52→---
+    53→
+    54→# 2. Recommended Technology Stack
+    55→
+    56→## Backend
+    57→
+    58→Recommended:
+    59→
+    60→```text
+    61→Node.js
+    62→TypeScript
+    63→NestJS OR Fastify
+    64→PostgreSQL
+    65→Prisma ORM
+    66→Redis
+    67→WebSocket / Socket.IO
+    68→JWT
+    69→REST API
+    70→```
+    71→
+    72→Agar aap Next.js ecosystem ke saath rakhna chahte ho:
+    73→
+    74→```text
+    75→Next.js
+    76→API Routes / Route Handlers
+    77→TypeScript
+    78→Prisma
+    79→PostgreSQL
+    80→Redis
+    81→Socket.IO
+    82→```
+    83→
+    84→For a larger production system, however, I would separate:
+    85→
+    86→```text
+    87→Frontend
+    88→Next.js
+    89→
+    90→Backend
+    91→NestJS / Fastify
+    92→
+    93→Database
+    94→PostgreSQL
+    95→
+    96→Cache
+    97→Redis
+    98→
+    99→Storage
+   100→S3-compatible storage
+   101→```
+   102→
+   103→---
+   104→
+   105→# 3. Android App Stack
+   106→
+   107→Recommended:
+   108→
+   109→```text
+   110→Kotlin
+   111→Jetpack Compose
+   112→MVVM / Clean Architecture
+   113→Retrofit / OkHttp
+   114→Kotlin Coroutines
+   115→Room
+   116→CameraX
+   117→FusedLocationProvider
+   118→Google Maps SDK
+   119→Firebase Cloud Messaging
+   120→Encrypted SharedPreferences / Android Keystore
+   121→```
+   122→
+   123→App architecture:
+   124→
+   125→```text
+   126→UI
+   127→ ↓
+   128→ViewModel
+   129→ ↓
+   130→Use Cases
+   131→ ↓
+   132→Repository
+   133→ ↓
+   134→API / Local DB
+   135→```
+   136→
+   137→---
+   138→
+   139→# 4. API Base URL
+   140→
+   141→Production:
+   142→
+   143→```text
+   144→https://api.worktrack.com/api/v1
+   145→```
+   146→
+   147→Development:
+   148→
+   149→```text
+   150→https://dev-api.worktrack.com/api/v1
+   151→```
+   152→
+   153→All requests:
+   154→
+   155→```http
+   156→Authorization: Bearer ACCESS_TOKEN
+   157→Content-Type: application/json
+   158→```
+   159→
+   160→---
+   161→
+   162→# 5. API Versioning
+   163→
+   164→Always use:
+   165→
+   166→```text
+   167→/api/v1/
+   168→```
+   169→
+   170→Example:
+   171→
+   172→```text
+   173→/api/v1/auth/login
+   174→/api/v1/projects
+   175→/api/v1/attendance/check-in
+   176→```
+   177→
+   178→Future:
+   179→
+   180→```text
+   181→/api/v2/
+   182→```
+   183→
+   184→This prevents breaking existing mobile apps.
+   185→
+   186→---
+   187→
+   188→# 6. Authentication Architecture
+   189→
+   190→Use:
+   191→
+   192→### Access Token
+   193→
+   194→Short-lived:
+   195→
+   196→```text
+   197→15 minutes
+   198→```
+   199→
+   200→### Refresh Token
+   201→
+   202→Long-lived:
+   203→
+   204→```text
+   205→30 days
+   206→```
+   207→
+   208→Mobile app stores tokens securely.
+   209→
+   210→Never store password locally.
+   211→
+   212→---
+   213→
+   214→# 7. Login API
+   215→
+   216→## POST
+   217→
+   218→```text
+   219→/api/v1/auth/login
+   220→```
+   221→
+   222→Request:
+   223→
+   224→```json
+   225→{
+   226→  "companyCode": "CLB001",
+   227→  "employeeId": "2585436369",
+   228→  "password": "********",
+   229→  "deviceId": "ANDROID-DEVICE-123"
+   230→}
+   231→```
+   232→
+   233→Response:
+   234→
+   235→```json
+   236→{
+   237→  "success": true,
+   238→  "data": {
+   239→    "accessToken": "eyJ...",
+   240→    "refreshToken": "eyJ...",
+   241→    "expiresIn": 900,
+   242→    "user": {
+   243→      "id": "usr_123",
+   244→      "employeeId": "2585436369",
+   245→      "name": "Ahmad",
+   246→      "role": "EMPLOYEE",
+   247→      "companyId": "cmp_001",
+   248→      "avatar": "https://..."
+   249→    }
+   250→  }
+   251→}
+   252→```
+   253→
+   254→---
+   255→
+   256→# 8. Login Validation
+   257→
+   258→Backend checks:
+   259→
+   260→```text
+   261→Company exists?
+   262→       ↓
+   263→Employee exists?
+   264→       ↓
+   265→Employee active?
+   266→       ↓
+   267→Password correct?
+   268→       ↓
+   269→Account locked?
+   270→       ↓
+   271→Device allowed?
+   272→       ↓
+   273→Generate tokens
+   274→```
+   275→
+   276→Failed login:
+   277→
+   278→```json
+   279→{
+   280→  "success": false,
+   281→  "error": {
+   282→    "code": "INVALID_CREDENTIALS",
+   283→    "message": "Employee ID or password is incorrect."
+   284→  }
+   285→}
+   286→```
+   287→
+   288→---
+   289→
+   290→# 9. Refresh Token API
+   291→
+   292→```text
+   293→POST /api/v1/auth/refresh
+   294→```
+   295→
+   296→Request:
+   297→
+   298→```json
+   299→{
+   300→  "refreshToken": "eyJ..."
+   301→}
+   302→```
+   303→
+   304→Response:
+   305→
+   306→```json
+   307→{
+   308→  "accessToken": "eyJ...",
+   309→  "expiresIn": 900
+   310→}
+   311→```
+   312→
+   313→---
+   314→
+   315→# 10. Logout
+   316→
+   317→```text
+   318→POST /api/v1/auth/logout
+   319→```
+   320→
+   321→Request:
+   322→
+   323→```json
+   324→{
+   325→  "refreshToken": "eyJ..."
+   326→}
+   327→```
+   328→
+   329→Backend invalidates refresh token.
+   330→
+   331→---
+   332→
+   333→# 11. Current User
+   334→
+   335→```text
+   336→GET /api/v1/auth/me
+   337→```
+   338→
+   339→Response:
+   340→
+   341→```json
+   342→{
+   343→  "id": "usr_123",
+   344→  "employeeId": "2585436369",
+   345→  "name": "Ahmad",
+   346→  "email": "ahmad@company.com",
+   347→  "role": "EMPLOYEE",
+   348→  "companyId": "cmp_001"
+   349→}
+   350→```
+   351→
+   352→---
+   353→
+   354→# 12. Company APIs
+   355→
+   356→Admin:
+   357→
+   358→```text
+   359→GET /api/v1/company
+   360→PATCH /api/v1/company
+   361→```
+   362→
+   363→Company response:
+   364→
+   365→```json
+   366→{
+   367→  "id": "cmp_001",
+   368→  "name": "Demo Company",
+   369→  "code": "CLB001",
+   370→  "timezone": "Asia/Karachi",
+   371→  "currency": "PKR",
+   372→  "logo": "https://..."
+   373→}
+   374→```
+   375→
+   376→---
+   377→
+   378→# 13. Employee APIs
+   379→
+   380→## List Employees
+   381→
+   382→```text
+   383→GET /api/v1/employees
+   384→```
+   385→
+   386→Query:
+   387→
+   388→```text
+   389→?page=1
+   390→&limit=20
+   391→&search=Ahmad
+   392→&status=ACTIVE
+   393→&department=Marketing
+   394→```
+   395→
+   396→Response:
+   397→
+   398→```json
+   399→{
+   400→  "data": [
+   401→    {
+   402→      "id": "emp_001",
+   403→      "employeeId": "2585436369",
+   404→      "name": "Ahmad",
+   405→      "status": "ACTIVE",
+   406→      "department": "Marketing",
+   407→      "designation": "Marketing Executive",
+   408→      "avatar": "https://..."
+   409→    }
+   410→  ],
+   411→  "pagination": {
+   412→    "page": 1,
+   413→    "limit": 20,
+   414→    "total": 48,
+   415→    "pages": 3
+   416→  }
+   417→}
+   418→```
+   419→
+   420→---
+   421→
+   422→# 14. Create Employee
+   423→
+   424→```text
+   425→POST /api/v1/employees
+   426→```
+   427→
+   428→```json
+   429→{
+   430→  "employeeId": "2585436369",
+   431→  "firstName": "Ahmad",
+   432→  "lastName": "",
+   433→  "email": "ahmad@company.com",
+   434→  "phone": "+923001234567",
+   435→  "departmentId": "dep_001",
+   436→  "designation": "Marketing Executive",
+   437→  "password": "********",
+   438→  "role": "EMPLOYEE"
+   439→}
+   440→```
+   441→
+   442→---
+   443→
+   444→# 15. Employee Profile
+   445→
+   446→```text
+   447→GET /api/v1/employees/:employeeId
+   448→```
+   449→
+   450→Response:
+   451→
+   452→```json
+   453→{
+   454→  "id": "emp_001",
+   455→  "employeeId": "2585436369",
+   456→  "name": "Ahmad",
+   457→  "email": "ahmad@company.com",
+   458→  "phone": "+923001234567",
+   459→  "role": "EMPLOYEE",
+   460→  "department": "Marketing",
+   461→  "designation": "Marketing Executive",
+   462→  "status": "ACTIVE",
+   463→  "projects": [
+   464→    {
+   465→      "id": "prj_001",
+   466→      "name": "Dubai Home Technical"
+   467→    }
+   468→  ]
+   469→}
+   470→```
+   471→
+   472→---
+   473→
+   474→# 16. Update Employee
+   475→
+   476→```text
+   477→PATCH /api/v1/employees/:id
+   478→```
+   479→
+   480→---
+   481→
+   482→# 17. Disable Employee
+   483→
+   484→Don't immediately delete employees because attendance history depends on them.
+   485→
+   486→Use:
+   487→
+   488→```text
+   489→PATCH /api/v1/employees/:id/status
+   490→```
+   491→
+   492→```json
+   493→{
+   494→  "status": "INACTIVE"
+   495→}
+   496→```
+   497→
+   498→---
+   499→
+   500→# 18. Projects API
+   501→
+   502→## Create Project
+   503→
+   504→```text
+   505→POST /api/v1/projects
+   506→```
+   507→
+   508→Request:
+   509→
+   510→```json
+   511→{
+   512→  "name": "Dubai Home Technical & Decor",
+   513→  "code": "DHT-001",
+   514→  "description": "Dubai technical project",
+   515→  "clientName": "ABC Client",
+   516→  "latitude": 25.2048,
+   517→  "longitude": 55.2708,
+   518→  "geofenceRadius": 200,
+   519→  "timezone": "Asia/Dubai",
+   520→  "startDate": "2026-10-06",
+   521→  "status": "ACTIVE"
+   522→}
+   523→```
+   524→
+   525→---
+   526→
+   527→# 19. Project Object
+   528→
+   529→```json
+   530→{
+   531→  "id": "prj_001",
+   532→  "name": "Dubai Home Technical & Decor",
+   533→  "code": "DHT-001",
+   534→  "status": "ACTIVE",
+   535→  "location": {
+   536→    "latitude": 25.2048,
+   537→    "longitude": 55.2708,
+   538→    "radius": 200
+   539→  },
+   540→  "employeeCount": 20
+   541→}
+   542→```
+   543→
+   544→---
+   545→
+   546→# 20. Employee Project Assignment
+   547→
+   548→```text
+   549→POST /api/v1/projects/:projectId/employees
+   550→```
+   551→
+   552→```json
+   553→{
+   554→  "employeeIds": [
+   555→    "emp_001",
+   556→    "emp_002",
+   557→    "emp_003"
+   558→  ]
+   559→}
+   560→```
+   561→
+   562→Remove:
+   563→
+   564→```text
+   565→DELETE /api/v1/projects/:projectId/employees/:employeeId
+   566→```
+   567→
+   568→---
+   569→
+   570→# 21. Mobile: Get Assigned Projects
+   571→
+   572→Employee app:
+   573→
+   574→```text
+   575→GET /api/v1/mobile/projects
+   576→```
+   577→
+   578→Response:
+   579→
+   580→```json
+   581→{
+   582→  "projects": [
+   583→    {
+   584→      "id": "prj_001",
+   585→      "name": "Dubai Home Technical",
+   586→      "code": "DHT-001",
+   587→      "status": "ACTIVE",
+   588→      "location": {
+   589→        "latitude": 25.2048,
+   590→        "longitude": 55.2708,
+   591→        "radius": 200
+   592→      }
+   593→    }
+   594→  ]
+   595→}
+   596→```
+   597→
+   598→---
+   599→
+   600→# 22. Mobile Dashboard API
+   601→
+   602→```text
+   603→GET /api/v1/mobile/dashboard
+   604→```
+   605→
+   606→Response:
+   607→
+   608→```json
+   609→{
+   610→  "employee": {
+   611→    "name": "Ahmad",
+   612→    "employeeId": "2585436369"
+   613→  },
+   614→  "today": {
+   615→    "date": "2026-10-06",
+   616→    "status": "WORKING",
+   617→    "project": {
+   618→      "id": "prj_001",
+   619→      "name": "Dubai Home Technical"
+   620→    },
+   621→    "checkIn": "10:32:00",
+   622→    "checkOut": null,
+   623→    "workingMinutes": 462
+   624→  }
+   625→}
+   626→```
+   627→
+   628→---
+   629→
+   630→# 23. Attendance Architecture
+   631→
+   632→Attendance should be treated as a **session**.
+   633→
+   634→```text
+   635→NOT_STARTED
+   636→     ↓
+   637→CHECKING_IN
+   638→     ↓
+   639→WORKING
+   640→     ↓
+   641→CHECKING_OUT
+   642→     ↓
+   643→COMPLETED
+   644→```
+   645→
+   646→Other states:
+   647→
+   648→```text
+   649→REJECTED
+   650→CANCELLED
+   651→MANUAL_ADJUSTMENT
+   652→```
+   653→
+   654→---
+   655→
+   656→# 24. Check-In Flow
+   657→
+   658→This is extremely important.
+   659→
+   660→```text
+   661→Employee selects project
+   662→        ↓
+   663→App requests camera
+   664→        ↓
+   665→Employee takes live photo
+   666→        ↓
+   667→App gets GPS
+   668→        ↓
+   669→App checks GPS accuracy
+   670→        ↓
+   671→Send attendance request
+   672→        ↓
+   673→Backend validates project
+   674→        ↓
+   675→Backend validates employee
+   676→        ↓
+   677→Backend validates geofence
+   678→        ↓
+   679→Backend creates attendance
+   680→        ↓
+   681→Upload photo
+   682→        ↓
+   683→Attendance becomes WORKING
+   684→        ↓
+   685→WebSocket event
+   686→        ↓
+   687→Admin dashboard updates
+   688→```
+   689→
+   690→---
+   691→
+   692→# 25. Check-In API
+   693→
+   694→```text
+   695→POST /api/v1/mobile/attendance/check-in
+   696→```
+   697→
+   698→Recommended use:
+   699→
+   700→`multipart/form-data`
+   701→
+   702→Fields:
+   703→
+   704→```text
+   705→projectId
+   706→latitude
+   707→longitude
+   708→accuracy
+   709→capturedAt
+   710→deviceId
+   711→deviceModel
+   712→appVersion
+   713→photo
+   714→```
+   715→
+   716→Example conceptual request:
+   717→
+   718→```text
+   719→projectId: prj_001
+   720→latitude: 25.2049
+   721→longitude: 55.2709
+   722→accuracy: 8.4
+   723→capturedAt: 2026-10-06T10:32:14+04:00
+   724→deviceId: ANDROID-123
+   725→deviceModel: Samsung SM-A546E
+   726→appVersion: 1.0.0
+   727→photo: image/jpeg
+   728→```
+   729→
+   730→---
+   731→
+   732→# 26. Backend Check-In Validation
+   733→
+   734→Backend must NOT blindly trust mobile.
+   735→
+   736→It should validate:
+   737→
+   738→```text
+   739→1. JWT valid?
+   740→2. Employee active?
+   741→3. Project active?
+   742→4. Employee assigned to project?
+   743→5. Employee already checked in?
+   744→6. Location coordinates valid?
+   745→7. GPS accuracy acceptable?
+   746→8. Employee inside geofence?
+   747→9. Server time?
+   748→10. Photo uploaded?
+   749→11. Duplicate request?
+   750→12. Device/session valid?
+   751→```
+   752→
+   753→---
+   754→
+   755→# 27. Geofence Calculation
+   756→
+   757→Backend calculates distance:
+   758→
+   759→```text
+   760→Employee GPS
+   761→       ↓
+   762→Project GPS
+   763→       ↓
+   764→Haversine Distance
+   765→       ↓
+   766→Distance <= Radius?
+   767→```
+   768→
+   769→Example:
+   770→
+   771→```text
+   772→Project Radius:
+   773→200 meters
+   774→
+   775→Employee Distance:
+   776→83 meters
+   777→
+   778→Result:
+   779→✓ ALLOWED
+   780→```
+   781→
+   782→If:
+   783→
+   784→```text
+   785→Distance:
+   786→1.4 KM
+   787→
+   788→Radius:
+   789→200m
+   790→
+   791→Result:
+   792→❌ OUTSIDE_GEOFENCE
+   793→```
+   794→
+   795→---
+   796→
+   797→# 28. Check-In Success
+   798→
+   799→Response:
+   800→
+   801→```json
+   802→{
+   803→  "success": true,
+   804→  "attendance": {
+   805→    "id": "att_001",
+   806→    "status": "WORKING",
+   807→    "projectId": "prj_001",
+   808→    "checkInAt": "2026-10-06T10:32:14+04:00",
+   809→    "checkInPhoto": "https://storage.worktrack.com/...",
+   810→    "location": {
+   811→      "latitude": 25.2049,
+   812→      "longitude": 55.2709,
+   813→      "accuracy": 8.4,
+   814→      "insideGeofence": true,
+   815→      "distanceFromProject": 83
+   816→    }
+   817→  }
+   818→}
+   819→```
+   820→
+   821→---
+   822→
+   823→# 29. Check-In Failure Responses
+   824→
+   825→Outside geofence:
+   826→
+   827→```json
+   828→{
+   829→  "success": false,
+   830→  "error": {
+   831→    "code": "OUTSIDE_GEOFENCE",
+   832→    "message": "You are outside the allowed project area.",
+   833→    "distance": 1420,
+   834→    "allowedRadius": 200
+   835→  }
+   836→}
+   837→```
+   838→
+   839→Poor GPS:
+   840→
+   841→```json
+   842→{
+   843→  "success": false,
+   844→  "error": {
+   845→    "code": "GPS_ACCURACY_TOO_LOW",
+   846→    "message": "Location accuracy is too low. Please move to an open area and try again."
+   847→  }
+   848→}
+   849→```
+   850→
+   851→Already checked in:
+   852→
+   853→```json
+   854→{
+   855→  "success": false,
+   856→  "error": {
+   857→    "code": "ALREADY_CHECKED_IN",
+   858→    "message": "You are already checked in."
+   859→  }
+   860→}
+   861→```
+   862→
+   863→---
+   864→
+   865→# 30. Photo Upload Architecture
+   866→
+   867→Don't send huge original camera images directly into PostgreSQL.
+   868→
+   869→Use:
+   870→
+   871→```text
+   872→Android
+   873→ ↓
+   874→Compress
+   875→ ↓
+   876→Upload
+   877→ ↓
+   878→Object Storage
+   879→ ↓
+   880→Database stores URL/key
+   881→```
+   882→
+   883→Example storage:
+   884→
+   885→```text
+   886→attendance/
+   887→2026/
+   888→10/
+   889→06/
+   890→emp_2585436369/
+   891→att_001/
+   892→check-in.jpg
+   893→check-out.jpg
+   894→```
+   895→
+   896→Database stores:
+   897→
+   898→```text
+   899→photoKey
+   900→photoUrl
+   901→mimeType
+   902→size
+   903→capturedAt
+   904→```
+   905→
+   906→---
+   907→
+   908→# 31. Presigned Upload — Recommended
+   909→
+   910→Better architecture:
+   911→
+   912→```text
+   913→Android
+   914→ ↓
+   915→Request upload URL
+   916→ ↓
+   917→Backend generates signed URL
+   918→ ↓
+   919→Android uploads image directly
+   920→ ↓
+   921→Storage
+   922→ ↓
+   923→Backend confirms upload
+   924→```
+   925→
+   926→API:
+   927→
+   928→```text
+   929→POST /api/v1/mobile/attendance/photo-upload-url
+   930→```
+   931→
+   932→Response:
+   933→
+   934→```json
+   935→{
+   936→  "uploadUrl": "https://storage....",
+   937→  "fileKey": "attendance/2026/10/06/att_001/checkin.jpg",
+   938→  "expiresIn": 300
+   939→}
+   940→```
+   941→
+   942→---
+   943→
+   944→# 32. Check-Out API
+   945→
+   946→```text
+   947→POST /api/v1/mobile/attendance/check-out
+   948→```
+   949→
+   950→Request:
+   951→
+   952→```text
+   953→attendanceId
+   954→latitude
+   955→longitude
+   956→accuracy
+   957→capturedAt
+   958→photo
+   959→```
+   960→
+   961→Backend validates:
+   962→
+   963→```text
+   964→Attendance exists?
+   965→       ↓
+   966→Belongs to employee?
+   967→       ↓
+   968→Status = WORKING?
+   969→       ↓
+   970→Check-out allowed?
+   971→       ↓
+   972→Photo?
+   973→       ↓
+   974→GPS?
+   975→       ↓
+   976→Save checkout
+   977→       ↓
+   978→Calculate duration
+   979→```
+   980→
+   981→---
+   982→
+   983→# 33. Check-Out Response
+   984→
+   985→```json
+   986→{
+   987→  "success": true,
+   988→  "attendance": {
+   989→    "id": "att_001",
+   990→    "status": "COMPLETED",
+   991→    "checkInAt": "2026-10-06T10:32:14+04:00",
+   992→    "checkOutAt": "2026-10-06T18:14:42+04:00",
+   993→    "workingMinutes": 462
+   994→  }
+   995→}
+   996→```
+   997→
+   998→---
+   999→
+  1000→# 34. Current Attendance API
+  1001→
+  1002→Mobile app:
+  1003→
+  1004→```text
+  1005→GET /api/v1/mobile/attendance/today
+  1006→```
+  1007→
+  1008→Response:
+  1009→
+  1010→```json
+  1011→{
+  1012→  "status": "WORKING",
+  1013→  "attendance": {
+  1014→    "id": "att_001",
+  1015→    "project": {
+  1016→      "id": "prj_001",
+  1017→      "name": "Dubai Home Technical"
+  1018→    },
+  1019→    "checkInAt": "2026-10-06T10:32:14+04:00",
+  1020→    "checkOutAt": null,
+  1021→    "workingMinutes": 462
+  1022→  }
+  1023→}
+  1024→```
+  1025→
+  1026→---
+  1027→
+  1028→# 35. Attendance History
+  1029→
+  1030→```text
+  1031→GET /api/v1/mobile/attendance/history
+  1032→```
+  1033→
+  1034→Query:
+  1035→
+  1036→```text
+  1037→?page=1
+  1038→&limit=20
+  1039→&from=2026-10-01
+  1040→&to=2026-10-31
+  1041→```
+  1042→
+  1043→Response:
+  1044→
+  1045→```json
+  1046→{
+  1047→  "data": [
+  1048→    {
+  1049→      "date": "2026-10-06",
+  1050→      "project": "Dubai Home Technical",
+  1051→      "checkIn": "10:32 AM",
+  1052→      "checkOut": "06:14 PM",
+  1053→      "workingMinutes": 462,
+  1054→      "status": "COMPLETED"
+  1055→    }
+  1056→  ]
+  1057→}
+  1058→```
+  1059→
+  1060→---
+  1061→
+  1062→# 36. Location Tracking
+  1063→
+  1064→This needs to be designed carefully.
+  1065→
+  1066→Do **not** continuously track employees 24/7.
+  1067→
+  1068→Recommended:
+  1069→
+  1070→```text
+  1071→CHECKED OUT
+  1072→     ↓
+  1073→No tracking
+  1074→
+  1075→CHECKED IN
+  1076→     ↓
+  1077→Location tracking allowed
+  1078→     ↓
+  1079→WORKING
+  1080→     ↓
+  1081→Check-out
+  1082→     ↓
+  1083→Tracking stops
+  1084→```
+  1085→
+  1086→This is both technically and privacy-wise better.
+  1087→
+  1088→---
+  1089→
+  1090→# 37. Live Location API
+  1091→
+  1092→When employee is working:
+  1093→
+  1094→```text
+  1095→POST /api/v1/mobile/location
+  1096→```
+  1097→
+  1098→Request:
+  1099→
+  1100→```json
+  1101→{
+  1102→  "attendanceId": "att_001",
+  1103→  "latitude": 25.2051,
+  1104→  "longitude": 55.2712,
+  1105→  "accuracy": 10,
+  1106→  "recordedAt": "2026-10-06T10:45:12+04:00"
+  1107→}
+  1108→```
+  1109→
+  1110→Response:
+  1111→
+  1112→```json
+  1113→{
+  1114→  "success": true,
+  1115→  "insideGeofence": true,
+  1116→  "distanceFromProject": 92
+  1117→}
+  1118→```
+  1119→
+  1120→---
+  1121→
+  1122→# 38. Location Frequency
+  1123→
+  1124→Don't send GPS every second.
+  1125→
+  1126→Recommended:
+  1127→
+  1128→```text
+  1129→Every 1–5 minutes
+  1130→```
+  1131→
+  1132→or when:
+  1133→
+  1134→```text
+  1135→Employee moves > 50 meters
+  1136→```
+  1137→
+  1138→Adaptive tracking is better.
+  1139→
+  1140→For example:
+  1141→
+  1142→```text
+  1143→Stationary:
+  1144→5 minutes
+  1145→
+  1146→Moving:
+  1147→1 minute
+  1148→```
+  1149→
+  1150→---
+  1151→
+  1152→# 39. Background Location
+  1153→
+  1154→Android app needs proper Android background location handling.
+  1155→
+  1156→The app should show clearly:
+  1157→
+  1158→```text
+  1159→WorkTrack is using your location
+  1160→while you are checked in.
+  1161→```
+  1162→
+  1163→Tracking stops after checkout.
+  1164→
+  1165→---
+  1166→
+  1167→# 40. Live Dashboard WebSocket
+  1168→
+  1169→Admin dashboard should not poll every few seconds.
+  1170→
+  1171→Use WebSocket.
+  1172→
+  1173→Connection:
+  1174→
+  1175→```text
+  1176→wss://api.worktrack.com/realtime
+  1177→```
+  1178→
+  1179→After admin authentication:
+  1180→
+  1181→```json
+  1182→{
+  1183→  "event": "authenticate",
+  1184→  "token": "JWT"
+  1185→}
+  1186→```
+  1187→
+  1188→Subscribe:
+  1189→
+  1190→```json
+  1191→{
+  1192→  "event": "subscribe",
+  1193→  "channel": "company:cmp_001"
+  1194→}
+  1195→```
+  1196→
+  1197→---
+  1198→
+  1199→# 41. Check-In WebSocket Event
+  1200→
+  1201→Backend emits:
+  1202→
+  1203→```json
+  1204→{
+  1205→  "event": "attendance.checked_in",
+  1206→  "data": {
+  1207→    "attendanceId": "att_001",
+  1208→    "employeeId": "emp_001",
+  1209→    "employeeName": "Ahmad",
+  1210→    "employeeCode": "2585436369",
+  1211→    "projectId": "prj_001",
+  1212→    "projectName": "Dubai Home Technical",
+  1213→    "checkInAt": "2026-10-06T10:32:14+04:00",
+  1214→    "status": "WORKING"
+  1215→  }
+  1216→}
+  1217→```
+  1218→
+  1219→Dashboard immediately updates.
+  1220→
+  1221→---
+  1222→
+  1223→# 42. Location WebSocket Event
+  1224→
+  1225→```json
+  1226→{
+  1227→  "event": "employee.location_updated",
+  1228→  "data": {
+  1229→    "employeeId": "emp_001",
+  1230→    "attendanceId": "att_001",
+  1231→    "latitude": 25.2051,
+  1232→    "longitude": 55.2712,
+  1233→    "accuracy": 10,
+  1234→    "insideGeofence": true,
+  1235→    "timestamp": "2026-10-06T10:45:12+04:00"
+  1236→  }
+  1237→}
+  1238→```
+  1239→
+  1240→Map marker moves.
+  1241→
+  1242→---
+  1243→
+  1244→# 43. Check-Out Event
+  1245→
+  1246→```json
+  1247→{
+  1248→  "event": "attendance.checked_out",
+  1249→  "data": {
+  1250→    "attendanceId": "att_001",
+  1251→    "employeeId": "emp_001",
+  1252→    "employeeName": "Ahmad",
+  1253→    "checkOutAt": "2026-10-06T18:14:42+04:00",
+  1254→    "workingMinutes": 462,
+  1255→    "status": "COMPLETED"
+  1256→  }
+  1257→}
+  1258→```
+  1259→
+  1260→---
+  1261→
+  1262→# 44. Admin Dashboard APIs
+  1263→
+  1264→Dashboard summary:
+  1265→
+  1266→```text
+  1267→GET /api/v1/dashboard/summary
+  1268→```
+  1269→
+  1270→Response:
+  1271→
+  1272→```json
+  1273→{
+  1274→  "date": "2026-10-06",
+  1275→  "totalEmployees": 48,
+  1276→  "present": 37,
+  1277→  "workingNow": 32,
+  1278→  "absent": 11,
+  1279→  "late": 6,
+  1280→  "onLeave": 2
+  1281→}
+  1282→```
+  1283→
+  1284→---
+  1285→
+  1286→# 45. Live Attendance API
+  1287→
+  1288→```text
+  1289→GET /api/v1/dashboard/live-attendance
+  1290→```
+  1291→
+  1292→Query:
+  1293→
+  1294→```text
+  1295→?projectId=prj_001
+  1296→&status=WORKING
+  1297→&page=1
+  1298→&limit=50
+  1299→```
+  1300→
+  1301→---
+  1302→
+  1303→# 46. Live Map API
+  1304→
+  1305→```text
+  1306→GET /api/v1/dashboard/live-map
+  1307→```
+  1308→
+  1309→Response:
+  1310→
+  1311→```json
+  1312→{
+  1313→  "employees": [
+  1314→    {
+  1315→      "employeeId": "emp_001",
+  1316→      "name": "Ahmad",
+  1317→      "attendanceId": "att_001",
+  1318→      "projectId": "prj_001",
+  1319→      "latitude": 25.2051,
+  1320→      "longitude": 55.2712,
+  1321→      "accuracy": 10,
+  1322→      "status": "WORKING",
+  1323→      "lastUpdated": "2026-10-06T10:45:12+04:00"
+  1324→    }
+  1325→  ]
+  1326→}
+  1327→```
+  1328→
+  1329→---
+  1330→
+  1331→# 47. Attendance Admin API
+  1332→
+  1333→```text
+  1334→GET /api/v1/attendance
+  1335→```
+  1336→
+  1337→Filters:
+  1338→
+  1339→```text
+  1340→employeeId
+  1341→projectId
+  1342→departmentId
+  1343→status
+  1344→from
+  1345→to
+  1346→page
+  1347→limit
+  1348→```
+  1349→
+  1350→Example:
+  1351→
+  1352→```text
+  1353→GET /api/v1/attendance
+  1354→?projectId=prj_001
+  1355→&status=COMPLETED
+  1356→&from=2026-10-01
+  1357→&to=2026-10-06
+  1358→```
+  1359→
+  1360→---
+  1361→
+  1362→# 48. Attendance Detail API
+  1363→
+  1364→```text
+  1365→GET /api/v1/attendance/:id
+  1366→```
+  1367→
+  1368→Response should contain:
+  1369→
+  1370→```text
+  1371→Employee
+  1372→Project
+  1373→Date
+  1374→Check-in
+  1375→Check-in photo
+  1376→Check-in GPS
+  1377→Check-in accuracy
+  1378→Check-out
+  1379→Check-out photo
+  1380→Check-out GPS
+  1381→Check-out accuracy
+  1382→Total hours
+  1383→Status
+  1384→Verification status
+  1385→Audit history
+  1386→```
+  1387→
+  1388→---
+  1389→
+  1390→# 49. Manual Attendance Adjustment
+  1391→
+  1392→Admin may need to correct attendance.
+  1393→
+  1394→Endpoint:
+  1395→
+  1396→```text
+  1397→POST /api/v1/attendance/:id/adjust
+  1398→```
+  1399→
+  1400→Request:
+  1401→
+  1402→```json
+  1403→{
+  1404→  "checkInAt": "2026-10-06T09:00:00+04:00",
+  1405→  "checkOutAt": "2026-10-06T17:00:00+04:00",
+  1406→  "reason": "Employee forgot to check out."
+  1407→}
+  1408→```
+  1409→
+  1410→Backend must record:
+  1411→
+  1412→```text
+  1413→Who changed it?
+  1414→When?
+  1415→Old value?
+  1416→New value?
+  1417→Reason?
+  1418→```
+  1419→
+  1420→Never silently overwrite attendance.
+  1421→
+  1422→---
+  1423→
+  1424→# 50. Audit Log
+  1425→
+  1426→Example:
+  1427→
+  1428→```json
+  1429→{
+  1430→  "action": "ATTENDANCE_ADJUSTED",
+  1431→  "entity": "attendance",
+  1432→  "entityId": "att_001",
+  1433→  "performedBy": "admin_001",
+  1434→  "oldValue": {
+  1435→    "checkOutAt": null
+  1436→  },
+  1437→  "newValue": {
+  1438→    "checkOutAt": "2026-10-06T17:00:00+04:00"
+  1439→  },
+  1440→  "reason": "Employee forgot to check out."
+  1441→}
+  1442→```
+  1443→
+  1444→---
+  1445→
+  1446→# 51. Dashboard Alerts API
+  1447→
+  1448→```text
+  1449→GET /api/v1/dashboard/alerts
+  1450→```
+  1451→
+  1452→Example:
+  1453→
+  1454→```json
+  1455→{
+  1456→  "alerts": [
+  1457→    {
+  1458→      "type": "LATE",
+  1459→      "severity": "WARNING",
+  1460→      "employee": "Ahmad",
+  1461→      "message": "Employee checked in 42 minutes late."
+  1462→    },
+  1463→    {
+  1464→      "type": "GEOFENCE",
+  1465→      "severity": "HIGH",
+  1466→      "employee": "Ali",
+  1467→      "message": "Employee is outside project area."
+  1468→    }
+  1469→  ]
+  1470→}
+  1471→```
+  1472→
+  1473→---
+  1474→
+  1475→# 52. Notifications
+  1476→
+  1477→Backend:
+  1478→
+  1479→```text
+  1480→POST /api/v1/notifications/send
+  1481→```
+  1482→
+  1483→But normal system notifications should be generated automatically.
+  1484→
+  1485→Events:
+  1486→
+  1487→```text
+  1488→EMPLOYEE_LATE
+  1489→EMPLOYEE_CHECKED_IN
+  1490→EMPLOYEE_CHECKED_OUT
+  1491→OUTSIDE_GEOFENCE
+  1492→MISSED_CHECKOUT
+  1493→LEAVE_REQUEST
+  1494→SYSTEM_ALERT
+  1495→```
+  1496→
+  1497→---
+  1498→
+  1499→# 53. Firebase Push Notification
+  1500→
+  1501→Android uses FCM.
+  1502→
+  1503→Example:
+  1504→
+  1505→```json
+  1506→{
+  1507→  "title": "Attendance Reminder",
+  1508→  "body": "You haven't checked in today.",
+  1509→  "data": {
+  1510→    "type": "ATTENDANCE_REMINDER",
+  1511→    "screen": "attendance"
+  1512→  }
+  1513→}
+  1514→```
+  1515→
+  1516→App receives notification and opens correct screen.
+  1517→
+  1518→---
+  1519→
+  1520→# 54. Device Registration
+  1521→
+  1522→After login:
+  1523→
+  1524→```text
+  1525→POST /api/v1/mobile/devices
+  1526→```
+  1527→
+  1528→```json
+  1529→{
+  1530→  "deviceId": "ANDROID-123",
+  1531→  "platform": "ANDROID",
+  1532→  "model": "Samsung SM-A546E",
+  1533→  "osVersion": "15",
+  1534→  "appVersion": "1.0.0",
+  1535→  "pushToken": "FCM_TOKEN"
+  1536→}
+  1537→```
+  1538→
+  1539→---
+  1540→
+  1541→# 55. Mobile Offline Mode
+  1542→
+  1543→This is important because employees may have weak internet.
+  1544→
+  1545→App should maintain local queue:
+  1546→
+  1547→```text
+  1548→Attendance Action
+  1549→       ↓
+  1550→Internet?
+  1551→   ↙       ↘
+  1552→ YES       NO
+  1553→ ↓          ↓
+  1554→Upload    Save locally
+  1555→            ↓
+  1556→       Retry automatically
+  1557→```
+  1558→
+  1559→However, **server time and server validation remain authoritative**.
+  1560→
+  1561→For attendance, don't allow unlimited offline manipulation.
+  1562→
+  1563→A safe approach:
+  1564→
+  1565→- Check-in can be queued briefly.
+  1566→- Capture GPS/photo metadata locally.
+  1567→- Upload once connectivity returns.
+  1568→- Backend records original capture timestamp separately from server receipt time.
+  1569→- Flag delayed submissions for admin review.
+  1570→
+  1571→---
+  1572→
+  1573→# 56. Mobile Local Database
+  1574→
+  1575→Room tables:
+  1576→
+  1577→```text
+  1578→LocalUser
+  1579→LocalProject
+  1580→LocalAttendance
+  1581→PendingUpload
+  1582→LocationQueue
+  1583→SyncState
+  1584→```
+  1585→
+  1586→Example:
+  1587→
+  1588→```text
+  1589→PendingUpload
+  1590→---------------------
+  1591→id
+  1592→type
+  1593→attendanceId
+  1594→filePath
+  1595→payload
+  1596→createdAt
+  1597→retryCount
+  1598→status
+  1599→```
+  1600→
+  1601→---
+  1602→
+  1603→# 57. API Idempotency
+  1604→
+  1605→This is extremely important.
+  1606→
+  1607→Suppose employee taps:
+  1608→
+  1609→**CHECK IN**
+  1610→
+  1611→three times because network is slow.
+  1612→
+  1613→You must not create 3 attendance records.
+  1614→
+  1615→Request:
+  1616→
+  1617→```http
+  1618→Idempotency-Key: 7d2c8c4d-...
+  1619→```
+  1620→
+  1621→Backend stores the key.
+  1622→
+  1623→Second request:
+  1624→
+  1625→```text
+  1626→Already processed
+  1627→→ return original result
+  1628→```
+  1629→
+  1630→Same for checkout.
+  1631→
+  1632→---
+  1633→
+  1634→# 58. Server Time
+  1635→
+  1636→Never trust Android device time for attendance calculations.
+  1637→
+  1638→Mobile sends:
+  1639→
+  1640→```text
+  1641→capturedAt
+  1642→```
+  1643→
+  1644→But backend records:
+  1645→
+  1646→```text
+  1647→serverReceivedAt
+  1648→```
+  1649→
+  1650→Attendance should use server-controlled timestamps as the official record, while preserving device capture time for verification/audit.
+  1651→
+  1652→---
+  1653→
+  1654→# 59. Timezone
+  1655→
+  1656→Every company should have timezone:
+  1657→
+  1658→```text
+  1659→Asia/Karachi
+  1660→Asia/Dubai
+  1661→Europe/London
+  1662→America/Toronto
+  1663→```
+  1664→
+  1665→Database should preferably store timestamps in:
+  1666→
+  1667→```text
+  1668→UTC
+  1669→```
+  1670→
+  1671→Then convert to company timezone in UI.
+  1672→
+  1673→---
+  1674→
+  1675→# 60. Attendance Calculation
+  1676→
+  1677→Example:
+  1678→
+  1679→```text
+  1680→Check-In
+  1681→10:32:14
+  1682→
+  1683→Check-Out
+  1684→18:14:42
+  1685→
+  1686→Raw Duration
+  1687→7h 42m 28s
+  1688→```
+  1689→
+  1690→If break:
+  1691→
+  1692→```text
+  1693→Break
+  1694→30 minutes
+  1695→
+  1696→Net Working
+  1697→7h 12m
+  1698→```
+  1699→
+  1700→Store minutes:
+  1701→
+  1702→```text
+  1703→workingMinutes: 432
+  1704→```
+  1705→
+  1706→This makes reporting easier.
+  1707→
+  1708→---
+  1709→
+  1710→# 61. Late Calculation
+  1711→
+  1712→Company settings:
+  1713→
+  1714→```text
+  1715→Shift:
+  1716→09:00
+  1717→
+  1718→Grace:
+  1719→15 minutes
+  1720→```
+  1721→
+  1722→Check-in:
+  1723→
+  1724→```text
+  1725→09:10
+  1726→```
+  1727→
+  1728→Result:
+  1729→
+  1730→```text
+  1731→ON_TIME
+  1732→```
+  1733→
+  1734→Check-in:
+  1735→
+  1736→```text
+  1737→09:22
+  1738→```
+  1739→
+  1740→Result:
+  1741→
+  1742→```text
+  1743→LATE
+  1744→lateMinutes = 22
+  1745→```
+  1746→
+  1747→---
+  1748→
+  1749→# 62. Attendance Status Model
+  1750→
+  1751→```text
+  1752→PENDING
+  1753→PRESENT
+  1754→WORKING
+  1755→COMPLETED
+  1756→LATE
+  1757→ABSENT
+  1758→ON_LEAVE
+  1759→HALF_DAY
+  1760→OUTSIDE_GEOFENCE
+  1761→REJECTED
+  1762→MANUALLY_ADJUSTED
+  1763→```
+  1764→
+  1765→But don't overload one field.
+  1766→
+  1767→Better:
+  1768→
+  1769→```text
+  1770→sessionStatus:
+  1771→WORKING / COMPLETED
+  1772→
+  1773→attendanceStatus:
+  1774→PRESENT / LATE / HALF_DAY / ABSENT / LEAVE
+  1775→
+  1776→verificationStatus:
+  1777→PENDING / VERIFIED / FLAGGED / REJECTED
+  1778→```
+  1779→
+  1780→This is much cleaner.
+  1781→
+  1782→---
+  1783→
+  1784→# 63. Database Schema
+  1785→
+  1786→Core tables:
+  1787→
+  1788→```text
+  1789→companies
+  1790→users
+  1791→employees
+  1792→departments
+  1793→projects
+  1794→project_employees
+  1795→shifts
+  1796→attendance
+  1797→attendance_photos
+  1798→attendance_locations
+  1799→devices
+  1800→notifications
+  1801→leave_requests
+  1802→audit_logs
+  1803→refresh_tokens
+  1804→roles
+  1805→permissions
+  1806→role_permissions
+  1807→company_settings
+  1808→```
+  1809→
+  1810→---
+  1811→
+  1812→# 64. Companies
+  1813→
+  1814→```text
+  1815→companies
+  1816→-----------------------
+  1817→id
+  1818→name
+  1819→code
+  1820→logo
+  1821→timezone
+  1822→currency
+  1823→status
+  1824→created_at
+  1825→updated_at
+  1826→```
+  1827→
+  1828→---
+  1829→
+  1830→# 65. Employees
+  1831→
+  1832→```text
+  1833→employees
+  1834→-----------------------
+  1835→id
+  1836→company_id
+  1837→user_id
+  1838→employee_id
+  1839→first_name
+  1840→last_name
+  1841→email
+  1842→phone
+  1843→department_id
+  1844→designation
+  1845→avatar
+  1846→status
+  1847→created_at
+  1848→updated_at
+  1849→```
+  1850→
+  1851→Unique:
+  1852→
+  1853→```text
+  1854→(company_id, employee_id)
+  1855→```
+  1856→
+  1857→So two different companies can both theoretically have employee ID `2585436369`.
+  1858→
+  1859→---
+  1860→
+  1861→# 66. Projects
+  1862→
+  1863→```text
+  1864→projects
+  1865→-----------------------
+  1866→id
+  1867→company_id
+  1868→name
+  1869→code
+  1870→client_name
+  1871→description
+  1872→latitude
+  1873→longitude
+  1874→geofence_radius
+  1875→timezone
+  1876→start_date
+  1877→end_date
+  1878→status
+  1879→created_at
+  1880→updated_at
+  1881→```
+  1882→
+  1883→---
+  1884→
+  1885→# 67. Project Employees
+  1886→
+  1887→```text
+  1888→project_employees
+  1889→-----------------------
+  1890→id
+  1891→project_id
+  1892→employee_id
+  1893→assigned_at
+  1894→removed_at
+  1895→status
+  1896→```
+  1897→
+  1898→Unique:
+  1899→
+  1900→```text
+  1901→(project_id, employee_id)
+  1902→```
+  1903→
+  1904→---
+  1905→
+  1906→# 68. Attendance
+  1907→
+  1908→```text
+  1909→attendance
+  1910→-----------------------
+  1911→id
+  1912→company_id
+  1913→employee_id
+  1914→project_id
+  1915→shift_id
+  1916→
+  1917→attendance_date
+  1918→
+  1919→check_in_at
+  1920→check_out_at
+  1921→
+  1922→check_in_latitude
+  1923→check_in_longitude
+  1924→check_in_accuracy
+  1925→
+  1926→check_out_latitude
+  1927→check_out_longitude
+  1928→check_out_accuracy
+  1929→
+  1930→working_minutes
+  1931→
+  1932→session_status
+  1933→attendance_status
+  1934→verification_status
+  1935→
+  1936→created_at
+  1937→updated_at
+  1938→```
+  1939→
+  1940→---
+  1941→
+  1942→# 69. Attendance Photos
+  1943→
+  1944→```text
+  1945→attendance_photos
+  1946→-----------------------
+  1947→id
+  1948→attendance_id
+  1949→type
+  1950→storage_key
+  1951→mime_type
+  1952→file_size
+  1953→captured_at
+  1954→uploaded_at
+  1955→metadata
+  1956→```
+  1957→
+  1958→`type`:
+  1959→
+  1960→```text
+  1961→CHECK_IN
+  1962→CHECK_OUT
+  1963→```
+  1964→
+  1965→---
+  1966→
+  1967→# 70. Location History
+  1968→
+  1969→```text
+  1970→attendance_locations
+  1971→-----------------------
+  1972→id
+  1973→attendance_id
+  1974→latitude
+  1975→longitude
+  1976→accuracy
+  1977→recorded_at
+  1978→source
+  1979→```
+  1980→
+  1981→Don't store unnecessary location data forever.
+  1982→
+  1983→Company retention policy should control this.
+  1984→
+  1985→---
+  1986→
+  1987→# 71. Device Table
+  1988→
+  1989→```text
+  1990→devices
+  1991→-----------------------
+  1992→id
+  1993→employee_id
+  1994→device_id
+  1995→platform
+  1996→model
+  1997→os_version
+  1998→app_version
+  1999→push_token
+  2000→last_seen_at
+
+[showing lines 1-2000 of 3234; use offset=2001 with limit to continue reading]

@@ -1,4 +1,4 @@
-// WorkTrack — comprehensive workforce management schema
+// WorkTrack — comprehensive workforce management schema (v2 — production-grade multi-tenant)
 
 generator client {
   provider = "prisma-client-js"
@@ -9,15 +9,22 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ============================================================
+// CORE ENTITIES
+// ============================================================
+
 model Company {
   id        String   @id @default(cuid())
   name      String
+  code      String   @unique // for mobile login (e.g. CLB001)
   industry  String?
   email     String?
   phone     String?
   address   String?
+  logo      String?
   timezone  String   @default("Asia/Karachi")
   currency  String   @default("PKR")
+  status    String   @default("ACTIVE") // ACTIVE | SUSPENDED | INACTIVE
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -26,6 +33,20 @@ model Company {
   projects    Project[]
   shifts      Shift[]
   settings    Setting[]
+  departments Department[]
+}
+
+model Department {
+  id        String   @id @default(cuid())
+  name      String
+  companyId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company   Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employees Employee[]
+
+  @@unique([companyId, name])
 }
 
 model User {
@@ -33,41 +54,48 @@ model User {
   email     String   @unique
   password  String
   name      String
-  role      String   @default("ADMIN") // SUPER_ADMIN | ADMIN | MANAGER | EMPLOYEE
+  role      String   @default("EMPLOYEE") // SUPER_ADMIN | ADMIN | MANAGER | EMPLOYEE
   companyId String?
   employeeId String?
-  status    String   @default("ACTIVE") // ACTIVE | INACTIVE
+  status    String   @default("ACTIVE") // ACTIVE | INACTIVE | LOCKED
   lastLogin DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  company   Company?  @relation(fields: [companyId], references: [id])
-  employee  Employee? @relation(fields: [employeeId], references: [id])
+  company      Company?       @relation(fields: [companyId], references: [id])
+  employee     Employee?      @relation(fields: [employeeId], references: [id])
+  refreshTokens RefreshToken[]
+  auditLogs    AuditLog[]
+  devices      Device[]
 
   @@unique([employeeId])
 }
 
 model Employee {
   id          String   @id @default(cuid())
-  empId       String   @unique
+  empId       String   // unique within company
   firstName   String
   lastName    String
   email       String?
   phone       String?
-  department  String?
+  departmentId String?
   designation String?
   status      String   @default("ACTIVE") // ACTIVE | INACTIVE
   avatarColor String   @default("#2563eb")
+  avatarUrl   String?
   companyId   String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  company     Company      @relation(fields: [companyId], references: [id])
+  company     Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  department  Department?   @relation(fields: [departmentId], references: [id])
   user        User?
   assignments Assignment[]
   attendance  Attendance[]
   leaves      LeaveRequest[]
+  devices     Device[]
 
+  @@unique([companyId, empId])
   @@index([companyId])
 }
 
@@ -82,13 +110,14 @@ model Project {
   lat         Float?
   lng         Float?
   radiusM     Int      @default(200)
+  timezone    String?
   startDate   DateTime?
   endDate     DateTime?
   companyId   String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  company     Company      @relation(fields: [companyId], references: [id])
+  company     Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
   assignments Assignment[]
   attendance  Attendance[]
 
@@ -99,6 +128,9 @@ model Assignment {
   id         String   @id @default(cuid())
   employeeId String
   projectId  String
+  status     String   @default("ACTIVE") // ACTIVE | REMOVED
+  assignedAt DateTime @default(now())
+  removedAt  DateTime?
   createdAt  DateTime @default(now())
 
   employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
@@ -107,37 +139,112 @@ model Assignment {
   @@unique([employeeId, projectId])
 }
 
+// ============================================================
+// ATTENDANCE — session-based with 3 status fields
+// ============================================================
+
 model Attendance {
   id              String   @id @default(cuid())
+  companyId       String
   employeeId      String
   projectId       String?
-  date            DateTime
+  shiftId         String?
+
+  attendanceDate  DateTime
+
+  // Check-in
   checkIn         DateTime?
-  checkOut        DateTime?
   checkInLat      Float?
   checkInLng      Float?
+  checkInAccuracy Float?
+  checkInLocation String?
+  checkInPhotoId  String?
+  checkInCapturedAt DateTime? // device capture time
+  checkInServerReceivedAt DateTime? // server receipt time
+
+  // Check-out
+  checkOut        DateTime?
   checkOutLat     Float?
   checkOutLng     Float?
-  checkInAccuracy Float?
   checkOutAccuracy Float?
-  checkInPhoto    String?
-  checkOutPhoto   String?
-  checkInLocation String?
   checkOutLocation String?
-  status          String   @default("PRESENT") // PRESENT | LATE | ABSENT | LEAVE | HALF_DAY
-  verification    String   @default("PENDING") // VERIFIED | PENDING | REJECTED
-  insideGeofence  Boolean  @default(true)
+  checkOutPhotoId String?
+  checkOutCapturedAt DateTime?
+  checkOutServerReceivedAt DateTime?
+
+  // Calculated
   workingMins     Int      @default(0)
+  lateMins        Int      @default(0)
+
+  // 3-status model (per spec §62)
+  sessionStatus       String @default("NOT_STARTED") // NOT_STARTED | WORKING | COMPLETED | CANCELLED
+  attendanceStatus    String @default("PENDING")     // PENDING | PRESENT | LATE | HALF_DAY | ABSENT | ON_LEAVE
+  verificationStatus  String @default("PENDING")     // PENDING | VERIFIED | FLAGGED | REJECTED
+
+  // Geofence
+  insideGeofence  Boolean  @default(true)
+  distanceFromProject Int? // meters
+
+  // Device info
+  checkInDeviceId   String?
+  checkOutDeviceId  String?
+
   notes           String?
+  idempotencyKey  String?
+
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  project  Project? @relation(fields: [projectId], references: [id])
+  employee  Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  project   Project? @relation(fields: [projectId], references: [id])
+  photos    AttendancePhoto[]
+  locations AttendanceLocation[]
+  auditLogs AuditLog[]
 
-  @@index([employeeId, date])
-  @@index([projectId, date])
+  @@index([employeeId, attendanceDate])
+  @@index([projectId, attendanceDate])
+  @@index([companyId, attendanceDate])
+  @@index([sessionStatus])
 }
+
+model AttendancePhoto {
+  id           String   @id @default(cuid())
+  attendanceId String
+  type         String   // CHECK_IN | CHECK_OUT
+  storageKey   String   // file path / object key
+  photoUrl     String   // public/signed URL
+  mimeType     String   @default("image/jpeg")
+  fileSize     Int      @default(0)
+  capturedAt   DateTime?
+  uploadedAt   DateTime @default(now())
+  metadata     String?  // JSON: hash, dimensions, etc.
+
+  attendance Attendance @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+
+  @@index([attendanceId])
+}
+
+model AttendanceLocation {
+  id           String   @id @default(cuid())
+  attendanceId String
+  latitude     Float
+  longitude    Float
+  accuracy     Float
+  recordedAt   DateTime
+  source       String   @default("MOBILE") // MOBILE | ADMIN
+  insideGeofence Boolean @default(true)
+  distanceFromProject Int?
+  createdAt    DateTime @default(now())
+
+  attendance Attendance @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+
+  @@index([attendanceId])
+  @@index([recordedAt])
+}
+
+// ============================================================
+// SHIFTS, LEAVE, DEVICES
+// ============================================================
 
 model Shift {
   id         String   @id @default(cuid())
@@ -146,7 +253,7 @@ model Shift {
   endTime    String
   graceMins  Int      @default(15)
   breakMins  Int      @default(45)
-  workingDays String  @default("Mon,Tue,Wed,Thu,Fri") // comma-separated
+  workingDays String  @default("Mon,Tue,Wed,Thu,Fri")
   companyId  String
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
@@ -171,18 +278,49 @@ model LeaveRequest {
   employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@index([status])
+  @@index([employeeId])
 }
+
+model Device {
+  id           String   @id @default(cuid())
+  userId       String
+  employeeId   String?
+  deviceId     String
+  platform     String   @default("ANDROID") // ANDROID | IOS | WEB
+  model        String?
+  osVersion    String?
+  appVersion   String?
+  pushToken    String?
+  lastSeenAt   DateTime @default(now())
+  status       String   @default("ACTIVE") // ACTIVE | INACTIVE | BLOCKED
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  employee Employee? @relation(fields: [employeeId], references: [id])
+
+  @@unique([userId, deviceId])
+  @@index([pushToken])
+}
+
+// ============================================================
+// NOTIFICATIONS, SETTINGS, AUDIT, REFRESH TOKENS, REPORT JOBS
+// ============================================================
 
 model Notification {
   id          String   @id @default(cuid())
+  userId      String?  // null = broadcast
+  companyId   String?
   type        String   @default("SYSTEM") // ATTENDANCE | LEAVE | ALERT | SYSTEM
   title       String
   description String?
   timeAgo     String?
   unread      Boolean  @default(true)
+  data        String?  // JSON payload
   createdAt   DateTime @default(now())
 
   @@index([unread])
+  @@index([userId])
 }
 
 model Setting {
@@ -196,4 +334,61 @@ model Setting {
   company Company @relation(fields: [companyId], references: [id])
 
   @@unique([companyId, key])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  action     String   // ATTENDANCE_ADJUSTED | EMPLOYEE_CREATED | PROJECT_UPDATED | etc.
+  entity     String   // attendance | employee | project | etc.
+  entityId   String
+  performedById String?
+  companyId  String?
+  oldValue   String?  // JSON
+  newValue   String?  // JSON
+  reason     String?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  performedBy User?       @relation(fields: [performedById], references: [id])
+  attendance  Attendance? @relation(fields: [entityId], references: [id])
+
+  @@index([entity, entityId])
+  @@index([performedById])
+  @@index([companyId])
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  deviceId  String?
+  expiresAt DateTime
+  revokedAt DateTime?
+  replacedBy String? // token rotation chain
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model ReportJob {
+  id          String   @id @default(cuid())
+  type        String   // daily | monthly | hours | project | late | absence
+  status      String   @default("PROCESSING") // PROCESSING | COMPLETED | FAILED
+  from        DateTime
+  to          DateTime
+  filters     String?  // JSON
+  resultUrl   String?  // download URL
+  resultFormat String  @default("csv") // csv | xlsx | pdf
+  error       String?
+  requestedById String?
+  companyId   String
+  createdAt   DateTime @default(now())
+  completedAt DateTime?
+
+  @@index([companyId])
+  @@index([status])
 }

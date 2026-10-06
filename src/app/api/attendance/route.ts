@@ -14,14 +14,14 @@ export async function GET(req: Request) {
   today.setHours(0, 0, 0, 0);
 
   const records = await db.attendance.findMany({
-    where: { date: today, employee: { companyId } },
+    where: { attendanceDate: today, employee: { companyId } },
     include: { employee: true, project: true },
     orderBy: { checkIn: "asc" },
   });
 
   const rows = records.map((r) => {
     // Map DB status to UI status
-    let uiStatus: string = r.status.toLowerCase();
+    let uiStatus: string = r.attendanceStatus.toLowerCase();
     if (uiStatus === "present") {
       uiStatus = r.checkOut ? "checked_out" : "working";
     } else if (uiStatus === "half_day") {
@@ -39,7 +39,7 @@ export async function GET(req: Request) {
       checkOut: r.checkOut?.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }),
       hoursMins: formatMins(r.workingMins),
       status: uiStatus,
-      verification: r.verification.toLowerCase(),
+      verification: r.verificationStatus.toLowerCase(),
       location: r.checkInLocation ?? "—",
       coords: { lat: r.checkInLat ?? 0, lng: r.checkInLng ?? 0 },
       accuracyM: r.checkInAccuracy ?? 0,

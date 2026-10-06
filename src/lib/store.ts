@@ -11,7 +11,8 @@ export type PageKey =
   | "shifts"
   | "leave"
   | "reports"
-  | "settings";
+  | "settings"
+  | "api-docs";
 
 export type AppView = "login" | "admin" | "employee";
 

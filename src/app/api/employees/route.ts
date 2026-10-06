@@ -14,11 +14,12 @@ export async function GET() {
   const employees = await db.employee.findMany({
     where: { companyId },
     include: {
-      assignments: { include: { project: true } },
+      department: true,
+      assignments: { where: { status: "ACTIVE" }, include: { project: true } },
       attendance: {
-        where: { date: today },
+        where: { attendanceDate: today },
         take: 1,
-        orderBy: { date: "desc" },
+        orderBy: { attendanceDate: "desc" },
       },
     },
     orderBy: { firstName: "asc" },
@@ -29,7 +30,7 @@ export async function GET() {
     let todaysStatus = "absent";
     if (todayAtt) {
       if (todayAtt.checkOut) todaysStatus = "checked_out";
-      else if (todayAtt.status === "LATE") todaysStatus = "late";
+      else if (todayAtt.attendanceStatus === "LATE") todaysStatus = "late";
       else todaysStatus = "working";
     }
     return {
@@ -39,7 +40,7 @@ export async function GET() {
       lastName: e.lastName,
       email: e.email,
       phone: e.phone,
-      department: e.department,
+      department: e.department?.name ?? null,
       designation: e.designation,
       status: e.status.toLowerCase(),
       avatarColor: e.avatarColor,
@@ -57,7 +58,7 @@ export async function GET() {
       workingTimeMins: todayAtt?.workingMins ?? 0,
       accuracyM: todayAtt?.checkInAccuracy ?? 0,
       lastUpdatedSec: todayAtt?.checkIn ? Math.max(5, Math.round((Date.now() - todayAtt.checkIn.getTime()) / 60000) * 60) : 5,
-      photoCaptured: !!todayAtt?.checkInPhoto,
+      photoCaptured: !!todayAtt?.checkInPhotoId,
       insideGeofence: todayAtt?.insideGeofence ?? true,
       presentThisMonth: 22,
       lateThisMonth: 3,
@@ -82,7 +83,7 @@ export async function POST(req: Request) {
       lastName: body.lastName ?? "",
       email: body.email,
       phone: body.phone,
-      department: body.department,
+      departmentId: body.departmentId ?? null,
       designation: body.designation,
       status: body.status?.toUpperCase() ?? "ACTIVE",
       avatarColor: body.avatarColor ?? "#2563eb",

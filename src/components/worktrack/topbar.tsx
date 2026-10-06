@@ -47,6 +47,7 @@ const PAGE_LABELS: Record<string, string> = {
   leave: "Leave Management",
   reports: "Reports",
   settings: "Settings",
+  "api-docs": "API Documentation",
 };
 
 export function Topbar() {
