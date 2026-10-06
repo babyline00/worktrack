@@ -1,0 +1,38 @@
+"use client";
+
+import { useApp } from "@/lib/store";
+import { Sidebar } from "@/components/worktrack/sidebar";
+import { Topbar } from "@/components/worktrack/topbar";
+import { DashboardHome } from "@/components/worktrack/pages/dashboard";
+import { LiveAttendancePage } from "@/components/worktrack/pages/live";
+import { ProjectsPage } from "@/components/worktrack/pages/projects";
+import { EmployeesPage } from "@/components/worktrack/pages/employees";
+import { AttendancePage } from "@/components/worktrack/pages/attendance";
+import { ShiftsPage } from "@/components/worktrack/pages/shifts";
+import { LeavePage } from "@/components/worktrack/pages/leave";
+import { ReportsPage } from "@/components/worktrack/pages/reports";
+import { SettingsPage } from "@/components/worktrack/pages/settings";
+
+export default function Home() {
+  const { page } = useApp();
+
+  return (
+    <div className="min-h-screen bg-background">
+      <Sidebar />
+      <div className="md:pl-[250px]">
+        <Topbar />
+        <main className="mx-auto max-w-[1440px] px-4 py-6 md:px-8 md:py-8">
+          {page === "dashboard" && <DashboardHome />}
+          {page === "live" && <LiveAttendancePage />}
+          {page === "projects" && <ProjectsPage />}
+          {page === "employees" && <EmployeesPage />}
+          {page === "attendance" && <AttendancePage />}
+          {page === "shifts" && <ShiftsPage />}
+          {page === "leave" && <LeavePage />}
+          {page === "reports" && <ReportsPage />}
+          {page === "settings" && <SettingsPage />}
+        </main>
+      </div>
+    </div>
+  );
+}
