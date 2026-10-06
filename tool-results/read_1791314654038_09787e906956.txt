@@ -1,0 +1,1447 @@
+     1→# Project Engineering Skills & Standards
+     2→
+     3→## Purpose
+     4→
+     5→Use this file as the default engineering standard for all new web, SaaS, API, AI-agent, automation, dashboard, and e-commerce projects. The goal is to build software that is **fast, secure, maintainable, scalable, accessible, SEO-friendly, observable, and production-ready** from the beginning.
+     6→
+     7→---
+     8→
+     9→# 1. Core Engineering Principles
+    10→
+    11→- Prefer simple, boring, maintainable architecture over unnecessary complexity.
+    12→- Design for production from the first implementation, not as a later cleanup task.
+    13→- Reuse existing libraries and project utilities before creating custom replacements.
+    14→- Keep business logic independent from UI, framework, database, and external providers where practical.
+    15→- Use clear naming, small modules, typed interfaces, validation, and predictable error handling.
+    16→- Never hard-code secrets, credentials, API keys, tokens, or environment-specific configuration.
+    17→- Make important operations idempotent where possible.
+    18→- Design APIs and database schemas around real use cases and expected growth.
+    19→- Measure performance instead of guessing.
+    20→- Automate repetitive checks with linting, formatting, tests, CI, and security scanning.
+    21→
+    22→---
+    23→
+    24→# 2. Project Discovery Before Coding
+    25→
+    26→Before implementation:
+    27→
+    28→1. Inspect the existing repository structure.
+    29→2. Identify the framework, runtime, package manager, database, deployment target, and existing conventions.
+    30→3. Read existing documentation and configuration files.
+    31→4. Identify reusable components and utilities.
+    32→5. Inspect database schema and migrations before changing data models.
+    33→6. Identify authentication, authorization, integrations, queues, cron jobs, storage, and external APIs.
+    34→7. Define functional requirements and non-functional requirements.
+    35→8. Define expected traffic, data volume, concurrency, latency targets, and availability requirements.
+    36→9. Identify deployment limitations such as shared hosting, cPanel, serverless, containers, or VPS.
+    37→10. Produce an implementation plan before making large architectural changes.
+    38→
+    39→Do not rewrite working systems merely for stylistic reasons.
+    40→
+    41→---
+    42→
+    43→# 3. System Design
+    44→
+    45→Every significant project should have a lightweight system design covering:
+    46→
+    47→- Users and roles
+    48→- Main business workflows
+    49→- Frontend architecture
+    50→- Backend/API architecture
+    51→- Database architecture
+    52→- Authentication and authorization
+    53→- File/object storage
+    54→- Caching
+    55→- Background jobs and queues
+    56→- External integrations
+    57→- Observability
+    58→- Security boundaries
+    59→- Deployment architecture
+    60→- Backup and disaster recovery
+    61→- Scaling strategy
+    62→- Failure modes
+    63→
+    64→## Recommended logical architecture
+    65→
+    66→```text
+    67→Browser / Mobile / Client
+    68→        |
+    69→        v
+    70→CDN / Edge / WAF
+    71→        |
+    72→        v
+    73→Frontend / BFF / API Gateway
+    74→        |
+    75→   +----+----------------+
+    76→   |                     |
+    77→   v                     v
+    78→Application API      Background Jobs
+    79→   |                     |
+    80→   +----------+----------+
+    81→              |
+    82→       Service / Domain Layer
+    83→              |
+    84→     +--------+---------+
+    85→     |        |         |
+    86→     v        v         v
+    87→ Database   Cache    Object Storage
+    88→     |
+    89→     v
+    90→Backups / Replicas
+    91→```
+    92→
+    93→For small projects, keep this logical separation without creating unnecessary microservices.
+    94→
+    95→## Monolith vs services
+    96→
+    97→Prefer a modular monolith until independent deployment, scaling, ownership, or reliability requirements justify service separation.
+    98→
+    99→Use microservices only when there is a clear operational reason such as:
+   100→
+   101→- independently scaling workloads
+   102→- independently deploying high-risk components
+   103→- strict isolation requirements
+   104→- separate team ownership
+   105→- different runtime requirements
+   106→- asynchronous/event-driven workloads at meaningful scale
+   107→
+   108→---
+   109→
+   110→# 4. Fast Website / Performance Engineering
+   111→
+   112→Performance is a first-class feature.
+   113→
+   114→## Target principles
+   115→
+   116→Aim for:
+   117→
+   118→- Fast first response
+   119→- Minimal JavaScript
+   120→- Minimal CSS
+   121→- Small HTML payloads
+   122→- Optimized images
+   123→- Efficient database queries
+   124→- Aggressive but safe caching
+   125→- CDN/edge delivery where useful
+   126→- Streaming or progressive rendering for expensive content
+   127→- No unnecessary client-side work
+   128→
+   129→## Loading strategy
+   130→
+   131→### Critical rendering path
+   132→
+   133→1. Return useful HTML quickly.
+   134→2. Inline only genuinely critical CSS when justified.
+   135→3. Defer non-critical JavaScript.
+   136→4. Preload only high-priority resources.
+   137→5. Avoid render-blocking third-party scripts.
+   138→6. Lazy-load below-the-fold media.
+   139→7. Reserve image dimensions to prevent layout shift.
+   140→8. Use modern image formats such as AVIF/WebP where supported.
+   141→9. Compress text assets with Brotli or gzip.
+   142→10. Use long-lived immutable caching for fingerprinted static assets.
+   143→
+   144→### JavaScript
+   145→
+   146→- Prefer server rendering or static rendering for content-heavy pages.
+   147→- Ship only the JavaScript required for the current page.
+   148→- Split large bundles.
+   149→- Lazy-load expensive components.
+   150→- Remove unused dependencies.
+   151→- Avoid large client-side state stores unless needed.
+   152→- Avoid hydration of components that do not need interactivity.
+   153→- Use Web Workers for appropriate CPU-heavy browser tasks.
+   154→
+   155→### Images
+   156→
+   157→- Resize images to their actual display size.
+   158→- Generate responsive variants with `srcset`/`sizes`.
+   159→- Use `loading="lazy"` for non-critical images.
+   160→- Do not lazy-load the primary above-the-fold hero image when it is the LCP element.
+   161→- Use `fetchpriority="high"` selectively for the primary LCP resource.
+   162→- Strip unnecessary metadata.
+   163→- Generate thumbnails rather than downloading full-size images everywhere.
+   164→
+   165→### Fonts
+   166→
+   167→- Use a limited number of font families and weights.
+   168→- Prefer self-hosted fonts when appropriate.
+   169→- Preload only critical fonts.
+   170→- Use `font-display: swap` or an appropriate fallback strategy.
+   171→- Avoid loading dozens of unused font weights.
+   172→
+   173→---
+   174→
+   175→# 5. Core Web Vitals
+   176→
+   177→Track and optimize:
+   178→
+   179→- **LCP** — Largest Contentful Paint
+   180→- **INP** — Interaction to Next Paint
+   181→- **CLS** — Cumulative Layout Shift
+   182→
+   183→Also monitor:
+   184→
+   185→- TTFB
+   186→- FCP
+   187→- total transfer size
+   188→- JavaScript execution time
+   189→- long tasks
+   190→- API latency
+   191→- database latency
+   192→
+   193→Performance work should be validated with real measurements in addition to local development testing.
+   194→
+   195→---
+   196→
+   197→# 6. Backend Performance
+   198→
+   199→- Avoid N+1 database queries.
+   200→- Select only required columns.
+   201→- Add indexes based on actual query patterns.
+   202→- Paginate large collections.
+   203→- Use cursor pagination for very large datasets where appropriate.
+   204→- Cache expensive and stable reads.
+   205→- Batch writes when appropriate.
+   206→- Use connection pooling.
+   207→- Move long-running operations to background jobs.
+   208→- Stream large files instead of loading them fully into memory.
+   209→- Apply request timeouts to external services.
+   210→- Use retries with exponential backoff only for retryable failures.
+   211→- Prevent retry storms.
+   212→- Use circuit breakers where external dependency failures can cascade.
+   213→
+   214→---
+   215→
+   216→# 7. Database Design
+   217→
+   218→- Use migrations for schema changes.
+   219→- Use foreign keys and constraints where appropriate.
+   220→- Add indexes for real query patterns.
+   221→- Avoid indexing every column.
+   222→- Use transactions for multi-step consistency requirements.
+   223→- Keep large blobs out of relational tables when object storage is more appropriate.
+   224→- Add audit fields such as `created_at` and `updated_at` where useful.
+   225→- Use soft deletion only when there is a concrete business requirement.
+   226→- Plan retention and archival for high-volume tables.
+   227→- Back up production databases automatically.
+   228→- Test restoration, not only backup creation.
+   229→
+   230→---
+   231→
+   232→# 8. Caching Strategy
+   233→
+   234→Use cache layers deliberately:
+   235→
+   236→```text
+   237→Browser Cache
+   238→     -> CDN / Edge Cache
+   239→     -> Application Cache
+   240→     -> Database
+   241→```
+   242→
+   243→Possible technologies include browser HTTP caching, CDN caching, Redis, in-process caches, and database query/result caching.
+   244→
+   245→Rules:
+   246→
+   247→- Define cache keys clearly.
+   248→- Define TTLs.
+   249→- Define invalidation rules.
+   250→- Avoid caching private user data in shared caches.
+   251→- Prevent cache stampedes.
+   252→- Never rely on cache as the only source of durable data.
+   253→
+   254→---
+   255→
+   256→# 9. API Design
+   257→
+   258→- Version public APIs when compatibility requires it.
+   259→- Use consistent resource naming.
+   260→- Validate all input at the boundary.
+   261→- Return predictable error structures.
+   262→- Use appropriate HTTP status codes.
+   263→- Support pagination, filtering, sorting, and search intentionally.
+   264→- Apply authentication and authorization to every protected operation.
+   265→- Add rate limits to abuse-prone endpoints.
+   266→- Use idempotency keys for operations where duplicate requests can cause damage.
+   267→- Document APIs with OpenAPI where appropriate.
+   268→- Never expose internal stack traces or secrets to clients.
+   269→
+   270→---
+   271→
+   272→# 10. Security
+   273→
+   274→Security must be designed into the system rather than added after deployment.
+   275→
+   276→## Application security
+   277→
+   278→- Validate and sanitize untrusted input.
+   279→- Use parameterized queries/ORM protections against SQL injection.
+   280→- Protect against XSS.
+   281→- Protect state-changing requests against CSRF where applicable.
+   282→- Prevent SSRF in URL-fetching features.
+   283→- Validate file uploads by type, size, extension, content, and storage location.
+   284→- Prevent path traversal.
+   285→- Use secure session handling.
+   286→- Apply least privilege.
+   287→- Enforce authorization server-side; never trust UI restrictions.
+   288→- Avoid exposing sensitive information in logs.
+   289→- Add security headers where appropriate.
+   290→- Configure CORS narrowly.
+   291→- Use HTTPS in production.
+   292→- Keep dependencies patched.
+   293→
+   294→## Authentication
+   295→
+   296→- Store passwords using strong password hashing such as Argon2id or an appropriate modern equivalent.
+   297→- Never store plaintext passwords.
+   298→- Support secure session expiration and revocation.
+   299→- Protect login and password-reset endpoints against abuse.
+   300→- Use MFA for sensitive applications where appropriate.
+   301→- Rotate compromised credentials immediately.
+   302→
+   303→## Secrets
+   304→
+   305→Never commit:
+   306→
+   307→- API keys
+   308→- database passwords
+   309→- private keys
+   310→- OAuth client secrets
+   311→- JWT signing secrets
+   312→- cloud credentials
+   313→
+   314→Use environment variables or a proper secret manager.
+   315→
+   316→## Security headers
+   317→
+   318→Consider:
+   319→
+   320→- Content-Security-Policy
+   321→- Strict-Transport-Security
+   322→- X-Content-Type-Options
+   323→- Referrer-Policy
+   324→- Permissions-Policy
+   325→- frame-ancestors / appropriate clickjacking protection
+   326→
+   327→Do not blindly copy a header configuration; test it against application requirements.
+   328→
+   329→---
+   330→
+   331→# 11. SEO
+   332→
+   333→For public websites, implement technical SEO from the beginning.
+   334→
+   335→- Semantic HTML.
+   336→- Correct title and meta description.
+   337→- Canonical URLs.
+   338→- XML sitemap.
+   339→- robots.txt.
+   340→- Open Graph metadata.
+   341→- Twitter/X card metadata where useful.
+   342→- Structured data/schema where applicable.
+   343→- Clean URL architecture.
+   344→- Proper heading hierarchy.
+   345→- Internal linking.
+   346→- 404 and redirect handling.
+   347→- Pagination/canonical strategy for large collections.
+   348→- Fast mobile rendering.
+   349→- Accessible navigation.
+   350→- Avoid indexing duplicate, private, filtered, or low-value URLs unintentionally.
+   351→
+   352→For dynamic sites, generate metadata from authoritative content rather than duplicating it manually.
+   353→
+   354→---
+   355→
+   356→# 12. Accessibility
+   357→
+   358→Target WCAG-aligned accessible interfaces.
+   359→
+   360→- Use semantic HTML first.
+   361→- Keyboard navigation must work.
+   362→- Provide visible focus states.
+   363→- Use labels for form controls.
+   364→- Provide useful alt text for meaningful images.
+   365→- Mark decorative images appropriately.
+   366→- Maintain adequate color contrast.
+   367→- Do not rely on color alone to communicate state.
+   368→- Use ARIA only when native HTML is insufficient.
+   369→- Support screen readers for important workflows.
+   370→- Respect reduced-motion preferences.
+   371→
+   372→---
+   373→
+   374→# 13. Frontend Architecture
+   375→
+   376→- Use reusable components.
+   377→- Keep components focused.
+   378→- Separate presentation from business logic where practical.
+   379→- Keep forms validated on both client and server.
+   380→- Handle loading, empty, success, error, and permission states.
+   381→- Use optimistic UI only where rollback is well-defined.
+   382→- Avoid unnecessary global state.
+   383→- Preserve URL state for useful filters/search where appropriate.
+   384→- Design responsive layouts from mobile to desktop.
+   385→- Avoid layout shifts caused by asynchronous content.
+   386→
+   387→For Next.js or similar frameworks:
+   388→
+   389→- Prefer server components/rendering for non-interactive content.
+   390→- Keep client components small.
+   391→- Use route-level code splitting.
+   392→- Cache stable server data appropriately.
+   393→- Avoid accidentally converting large parts of the application into client components.
+   394→
+   395→---
+   396→
+   397→# 14. UX Standards
+   398→
+   399→Every important page should handle:
+   400→
+   401→- loading state
+   402→- empty state
+   403→- error state
+   404→- success feedback
+   405→- permission denied state
+   406→- offline/network failure where applicable
+   407→- destructive action confirmation
+   408→
+   409→Interfaces should be responsive, keyboard-friendly, and consistent.
+   410→
+   411→Avoid unnecessary animations, popups, spinners, and blocking dialogs.
+   412→
+   413→---
+   414→
+   415→# 15. AI / Agent Projects
+   416→
+   417→For AI systems:
+   418→
+   419→- Separate model provider configuration from business logic.
+   420→- Support provider fallback where reliability requires it.
+   421→- Use structured outputs when possible.
+   422→- Validate model outputs before executing actions.
+   423→- Require approval for high-impact or destructive actions.
+   424→- Apply tool-level permissions.
+   425→- Log model/tool traces without leaking secrets.
+   426→- Bound context size and token usage.
+   427→- Cache deterministic or reusable work where appropriate.
+   428→- Add timeouts and retries for model APIs.
+   429→- Design provider abstraction so models can be replaced.
+   430→- Never allow model-generated instructions to bypass authorization.
+   431→- Treat retrieved web/file content as untrusted input.
+   432→- Add prompt-injection defenses for tool-using agents.
+   433→
+   434→Recommended agent flow:
+   435→
+   436→```text
+   437→User Request
+   438→    -> Intent / Task Analysis
+   439→    -> Permission Check
+   440→    -> Plan
+   441→    -> Tool Selection
+   442→    -> Tool Execution
+   443→    -> Validation
+   444→    -> Optional Human Approval
+   445→    -> Result
+   446→    -> Audit / Trace
+   447→```
+   448→
+   449→---
+   450→
+   451→# 16. Scraping / Crawling Systems
+   452→
+   453→For crawlers and website audit tools:
+   454→
+   455→- Respect robots.txt and applicable site policies.
+   456→- Implement concurrency limits.
+   457→- Use request timeouts.
+   458→- Retry only transient failures.
+   459→- Rotate proxies only when legitimately required and permitted.
+   460→- Deduplicate URLs and content.
+   461→- Normalize URLs.
+   462→- Detect canonical URLs.
+   463→- Store crawl state incrementally.
+   464→- Stream or batch large exports.
+   465→- Avoid loading browser automation for pages that can be fetched with HTTP.
+   466→- Use browser rendering only when required by JavaScript behavior.
+   467→- Cache reusable resources.
+   468→- Track status codes, redirects, latency, content type, and crawl errors.
+   469→- Prevent infinite crawl loops and unbounded URL generation.
+   470→
+   471→---
+   472→
+   473→# 17. File Uploads and Storage
+   474→
+   475→- Store uploads outside executable web roots where possible.
+   476→- Generate server-side filenames.
+   477→- Limit file size.
+   478→- Validate MIME type and actual file content.
+   479→- Scan files where risk warrants it.
+   480→- Prevent executable uploads.
+   481→- Use object storage for large media when appropriate.
+   482→- Use signed URLs for private downloads.
+   483→- Apply retention and cleanup policies.
+   484→
+   485→---
+   486→
+   487→# 18. Background Jobs
+   488→
+   489→Use queues for:
+   490→
+   491→- email sending
+   492→- image processing
+   493→- video processing
+   494→- scraping
+   495→- report generation
+   496→- AI workloads
+   497→- imports/exports
+   498→- scheduled maintenance
+   499→
+   500→Each job should have:
+   501→
+   502→- unique/job ID
+   503→- retry policy
+   504→- timeout
+   505→- status
+   506→- error details
+   507→- idempotency strategy
+   508→- dead-letter handling where appropriate
+   509→- progress reporting for long operations
+   510→
+   511→---
+   512→
+   513→# 19. Observability
+   514→
+   515→Production systems should provide:
+   516→
+   517→- structured logs
+   518→- request IDs / correlation IDs
+   519→- metrics
+   520→- error tracking
+   521→- health checks
+   522→- dependency health checks
+   523→- performance measurements
+   524→- audit logs for sensitive actions
+   525→
+   526→Track at minimum:
+   527→
+   528→- request rate
+   529→- error rate
+   530→- latency
+   531→- database latency
+   532→- queue depth
+   533→- job failures
+   534→- cache hit/miss rate where relevant
+   535→- resource utilization
+   536→
+   537→Never log passwords, tokens, private keys, full payment details, or unnecessary personal data.
+   538→
+   539→---
+   540→
+   541→# 20. Reliability and Failure Design
+   542→
+   543→Design for failure:
+   544→
+   545→- external APIs can fail
+   546→- databases can become unavailable
+   547→- queues can back up
+   548→- DNS/CDN can fail
+   549→- users can submit duplicate requests
+   550→- workers can crash midway through a job
+   551→- deployments can fail
+   552→
+   553→Use:
+   554→
+   555→- timeouts
+   556→- retries with backoff
+   557→- idempotency
+   558→- graceful degradation
+   559→- circuit breakers where appropriate
+   560→- health checks
+   561→- transactional boundaries
+   562→- rollback/feature flags for risky releases
+   563→- backups and tested restoration procedures
+   564→
+   565→---
+   566→
+   567→# 21. Deployment
+   568→
+   569→Before production:
+   570→
+   571→- production environment variables configured
+   572→- HTTPS enabled
+   573→- database migrations tested
+   574→- backups configured
+   575→- restore process tested
+   576→- error monitoring enabled
+   577→- logging configured
+   578→- security headers reviewed
+   579→- CORS reviewed
+   580→- rate limiting reviewed
+   581→- cron/queue workers verified
+   582→- storage permissions reviewed
+   583→- build artifacts verified
+   584→- cache behavior tested
+   585→- rollback procedure documented
+   586→
+   587→For restricted shared hosting/cPanel environments, prefer architecture that matches available runtimes. If Node.js is unavailable, do not assume a Next.js server can run there; consider static export, PHP backend, a supported runtime, or external application hosting.
+   588→
+   589→---
+   590→
+   591→# 22. Testing
+   592→
+   593→Use multiple testing layers:
+   594→
+   595→### Unit tests
+   596→
+   597→Business rules, utility functions, validators, transformations.
+   598→
+   599→### Integration tests
+   600→
+   601→Database, APIs, queues, storage, and external-service adapters.
+   602→
+   603→### End-to-end tests
+   604→
+   605→Critical user journeys such as authentication, checkout, dashboard workflows, and administration.
+   606→
+   607→### Performance tests
+   608→
+   609→Measure representative workloads and concurrency.
+   610→
+   611→### Security tests
+   612→
+   613→Check authentication, authorization, injection risks, uploads, SSRF, dependency vulnerabilities, and exposed secrets.
+   614→
+   615→Do not treat high test coverage as proof of correctness; test important behavior and failure modes.
+   616→
+   617→---
+   618→
+   619→# 23. CI/CD Quality Gates
+   620→
+   621→A production repository should ideally run:
+   622→
+   623→```text
+   624→Install
+   625→  -> Type Check
+   626→  -> Lint
+   627→  -> Format Check
+   628→  -> Unit Tests
+   629→  -> Integration Tests
+   630→  -> Build
+   631→  -> Security / Dependency Scan
+   632→  -> Deployment
+   633→  -> Smoke Test
+   634→```
+   635→
+   636→Block deployment when critical checks fail.
+   637→
+   638→---
+   639→
+   640→# 24. Code Quality
+   641→
+   642→Use:
+   643→
+   644→- TypeScript strict mode where applicable.
+   645→- Python type hints where practical.
+   646→- ESLint/formatter or equivalent tooling.
+   647→- Ruff/Black/MyPy or project-appropriate Python tooling.
+   648→- Clear module boundaries.
+   649→- Small functions.
+   650→- Explicit error handling.
+   651→- No dead code.
+   652→- No duplicated business logic.
+   653→- No unexplained magic constants.
+   654→
+   655→Comments should explain **why**, not merely repeat what the code does.
+   656→
+   657→---
+   658→
+   659→# 25. Dependency Management
+   660→
+   661→Before adding a dependency:
+   662→
+   663→1. Check whether the framework already provides the feature.
+   664→2. Check maintenance activity.
+   665→3. Check license compatibility.
+   666→4. Check bundle/runtime impact.
+   667→5. Check security history.
+   668→6. Check whether a smaller dependency solves the problem.
+   669→
+   670→Keep dependencies updated, but test upgrades before production deployment.
+   671→
+   672→---
+   673→
+   674→# 26. Environment Configuration
+   675→
+   676→Maintain separate configuration for:
+   677→
+   678→- development
+   679→- testing
+   680→- staging
+   681→- production
+   682→
+   683→Use environment variables for deployment-specific values.
+   684→
+   685→Document required variables in `.env.example` without including real secrets.
+   686→
+   687→---
+   688→
+   689→# 27. Documentation
+   690→
+   691→Every substantial project should include:
+   692→
+   693→```text
+   694→README.md
+   695→ARCHITECTURE.md
+   696→SECURITY.md
+   697→API.md (when applicable)
+   698→DEPLOYMENT.md
+   699→CHANGELOG.md
+   700→.env.example
+   701→```
+   702→
+   703→Document:
+   704→
+   705→- setup
+   706→- architecture
+   707→- environment variables
+   708→- database setup
+   709→- migrations
+   710→- deployment
+   711→- troubleshooting
+   712→- backup/restore
+   713→- security assumptions
+   714→- known limitations
+   715→
+   716→---
+   717→
+   718→# 28. Project Structure
+   719→
+   720→Use a structure appropriate to the framework, but keep responsibilities clear.
+   721→
+   722→Example:
+   723→
+   724→```text
+   725→project/
+   726→├── app/ or src/
+   727→│   ├── components/
+   728→│   ├── pages/ or routes/
+   729→│   ├── features/
+   730→│   ├── services/
+   731→│   ├── domain/
+   732→│   ├── repositories/
+   733→│   ├── validators/
+   734→│   ├── lib/
+   735→│   └── config/
+   736→├── tests/
+   737→├── scripts/
+   738→├── migrations/
+   739→├── public/
+   740→├── docs/
+   741→├── .env.example
+   742→├── README.md
+   743→├── ARCHITECTURE.md
+   744→└── SECURITY.md
+   745→```
+   746→
+   747→Do not force this exact structure onto every framework; use the same separation of concerns with framework-native conventions.
+   748→
+   749→---
+   750→
+   751→# 29. Production Readiness Checklist
+   752→
+   753→Before calling a project complete:
+   754→
+   755→- [ ] Requirements implemented
+   756→- [ ] Database schema reviewed
+   757→- [ ] Authentication implemented securely
+   758→- [ ] Authorization tested
+   759→- [ ] Input validation implemented
+   760→- [ ] Error handling implemented
+   761→- [ ] Loading/empty/error UI states implemented
+   762→- [ ] Responsive design verified
+   763→- [ ] Accessibility reviewed
+   764→- [ ] SEO implemented where relevant
+   765→- [ ] Images optimized
+   766→- [ ] JavaScript bundle reviewed
+   767→- [ ] Core Web Vitals measured
+   768→- [ ] API performance checked
+   769→- [ ] Database indexes reviewed
+   770→- [ ] Caching strategy reviewed
+   771→- [ ] Rate limiting configured where needed
+   772→- [ ] Secrets removed from source control
+   773→- [ ] Security headers reviewed
+   774→- [ ] Dependency vulnerabilities checked
+   775→- [ ] Unit/integration/E2E tests added for critical behavior
+   776→- [ ] Logging and monitoring configured
+   777→- [ ] Health checks configured
+   778→- [ ] Background jobs verified
+   779→- [ ] Backup configured
+   780→- [ ] Restore tested
+   781→- [ ] Deployment documented
+   782→- [ ] Rollback plan documented
+   783→- [ ] Production smoke test completed
+   784→
+   785→---
+   786→
+   787→# 30. Default Definition of Done
+   788→
+   789→A feature is not complete when the code merely works locally.
+   790→
+   791→A feature is complete when:
+   792→
+   793→1. The intended behavior works.
+   794→2. Invalid input is handled safely.
+   795→3. Permissions are enforced server-side.
+   796→4. Loading, empty, success, and failure states are handled.
+   797→5. Data integrity is preserved.
+   798→6. Performance is acceptable for the expected workload.
+   799→7. Security implications have been reviewed.
+   800→8. Tests cover important behavior.
+   801→9. Logs/metrics exist where operationally useful.
+   802→10. Documentation is updated.
+   803→11. Deployment behavior is verified.
+   804→12. The implementation does not introduce unnecessary technical debt.
+   805→
+   806→---
+   807→
+   808→# 31. Fast-by-Default Rules
+   809→
+   810→For every new website, ask:
+   811→
+   812→- Can this page be rendered on the server?
+   813→- Can this JavaScript be removed?
+   814→- Can this API call happen server-side?
+   815→- Can this request be cached?
+   816→- Can this image be smaller?
+   817→- Can this dependency be removed?
+   818→- Can this database query be reduced?
+   819→- Can this work happen asynchronously?
+   820→- Can this third-party script be removed or deferred?
+   821→- Can this page load useful content before non-critical content?
+   822→
+   823→**Performance is not a final optimization phase. It is an architectural requirement.**
+   824→
+   825→---
+   826→
+   827→# 32. Default AI Coding-Agent Instructions
+   828→
+   829→When an AI coding agent works on a project using this file:
+   830→
+   831→1. Inspect before editing.
+   832→2. Understand existing architecture before introducing new patterns.
+   833→3. Make the smallest safe change that solves the problem.
+   834→4. Preserve working functionality.
+   835→5. Do not silently remove features.
+   836→6. Validate changes with tests, lint, type checks, and build checks where available.
+   837→7. Review security implications of every new endpoint, upload, integration, credential, and external request.
+   838→8. Review performance implications of every new dependency, client component, query, API call, image, and third-party script.
+   839→9. Report files changed and validation performed.
+   840→10. If a requirement conflicts with deployment limitations, explain the constraint and implement the closest production-safe architecture rather than pretending the unsupported runtime exists.
+   841→
+   842→---
+   843→
+   844→# 33. Architecture Decision Record Template
+   845→
+   846→For important architectural decisions, record:
+   847→
+   848→```md
+   849→# ADR: <Decision>
+   850→
+   851→## Context
+   852→What problem are we solving?
+   853→
+   854→## Options
+   855→What reasonable alternatives were considered?
+   856→
+   857→## Decision
+   858→What was selected?
+   859→
+   860→## Reasons
+   861→Why was it selected?
+   862→
+   863→## Trade-offs
+   864→What are the costs or limitations?
+   865→
+   866→## Consequences
+   867→What changes because of this decision?
+   868→
+   869→## Date
+   870→YYYY-MM-DD
+   871→```
+   872→
+   873→---
+   874→
+   875→# 34. Final Engineering Rule
+   876→
+   877→Build software that is:
+   878→
+   879→**Fast + Secure + Scalable + Accessible + SEO-friendly + Observable + Testable + Maintainable + Deployable.**
+   880→
+   881→Do not optimize only for getting the first version running. Optimize the architecture so the project can continue growing without requiring a complete rewrite.
+   882→
+   883→---
+   884→
+   885→# 35. Design Engineering System
+   886→
+   887→Treat design as an engineering system, not a collection of screenshots.
+   888→
+   889→Every interface should have:
+   890→
+   891→- design tokens
+   892→- reusable components
+   893→- interaction states
+   894→- responsive rules
+   895→- accessibility rules
+   896→- motion rules
+   897→- content rules
+   898→- error and empty states
+   899→- performance constraints
+   900→
+   901→Prefer consistency over one-off visual decisions.
+   902→
+   903→## Design tokens
+   904→
+   905→Define tokens for:
+   906→
+   907→- colors
+   908→- typography
+   909→- spacing
+   910→- sizing
+   911→- radii
+   912→- borders
+   913→- shadows
+   914→- elevation
+   915→- z-index layers
+   916→- animation duration
+   917→- easing curves
+   918→- breakpoints
+   919→
+   920→Use semantic tokens such as `color.background`, `color.surface`, `color.text`, `color.primary`, and `color.danger` instead of scattering raw values throughout components.
+   921→
+   922→---
+   923→
+   924→# 36. UI/UX Quality Standards
+   925→
+   926→Before implementing a page, define:
+   927→
+   928→1. Primary user goal.
+   929→2. Primary action.
+   930→3. Secondary actions.
+   931→4. Information hierarchy.
+   932→5. Navigation path.
+   933→6. Responsive behavior.
+   934→7. Loading behavior.
+   935→8. Empty behavior.
+   936→9. Error behavior.
+   937→10. Success feedback.
+   938→11. Permission states.
+   939→12. Accessibility requirements.
+   940→
+   941→Avoid visual complexity that does not improve comprehension or task completion.
+   942→
+   943→Use progressive disclosure for advanced functionality.
+   944→
+   945→---
+   946→
+   947→# 37. Responsive Design System
+   948→
+   949→Design for real layouts rather than fixed device screenshots.
+   950→
+   951→- Use fluid containers where appropriate.
+   952→- Use CSS Grid/Flexbox for layout.
+   953→- Prefer responsive typography.
+   954→- Avoid unnecessary fixed heights.
+   955→- Handle long text gracefully.
+   956→- Support touch targets of appropriate size.
+   957→- Test narrow mobile widths, tablets, laptops, and large displays.
+   958→- Test landscape orientation where relevant.
+   959→- Ensure dialogs and menus remain usable at small sizes.
+   960→- Never allow horizontal overflow unless intentionally designed.
+   961→
+   962→---
+   963→
+   964→# 38. 2D Graphics
+   965→
+   966→For 2D interfaces, illustrations, diagrams, games, and visual tools:
+   967→
+   968→- Prefer SVG for scalable UI graphics and icons.
+   969→- Use Canvas for high-frequency drawing or pixel-oriented rendering.
+   970→- Separate geometry from rendering logic.
+   971→- Use coordinate systems explicitly.
+   972→- Support device-pixel-ratio correctly.
+   973→- Avoid unnecessarily large raster assets.
+   974→- Compress raster images.
+   975→- Use sprite sheets only when they provide a measurable benefit.
+   976→- Cache reusable drawing resources.
+   977→
+   978→Useful 2D primitives include:
+   979→
+   980→- points
+   981→- lines
+   982→- rectangles
+   983→- circles
+   984→- polygons
+   985→- paths
+   986→- Bézier curves
+   987→- transforms
+   988→- clipping regions
+   989→- masks
+   990→
+   991→---
+   992→
+   993→# 39. 3D Design and Rendering
+   994→
+   995→For 3D experiences:
+   996→
+   997→- Define world, camera, and object coordinate systems.
+   998→- Use reusable models and materials.
+   999→- Keep polygon counts appropriate for the target device.
+  1000→- Compress textures.
+  1001→- Use texture atlases where useful.
+  1002→- Prefer instancing for repeated objects.
+  1003→- Use level-of-detail (LOD) for large scenes.
+  1004→- Frustum-cull objects outside the camera view.
+  1005→- Avoid unnecessary transparent materials.
+  1006→- Reuse geometries and materials.
+  1007→- Dispose GPU resources correctly.
+  1008→- Keep post-processing effects proportional to device capability.
+  1009→
+  1010→Recommended conceptual pipeline:
+  1011→
+  1012→```text
+  1013→Input
+  1014→  -> Scene State
+  1015→  -> Physics / Logic
+  1016→  -> Animation
+  1017→  -> Camera
+  1018→  -> Culling / LOD
+  1019→  -> Geometry
+  1020→  -> Materials / Textures
+  1021→  -> Lighting
+  1022→  -> Rendering
+  1023→  -> Post Processing
+  1024→  -> Display
+  1025→```
+  1026→
+  1027→---
+  1028→
+  1029→# 40. Icons and Visual Assets
+  1030→
+  1031→Use a coherent icon language.
+  1032→
+  1033→- Keep stroke/fill style consistent.
+  1034→- Keep optical size consistent.
+  1035→- Use predictable viewBox dimensions.
+  1036→- Provide accessible labels for meaningful icons.
+  1037→- Do not use icons alone when the meaning is ambiguous.
+  1038→- Use tooltips for unfamiliar icon-only controls.
+  1039→- Prefer a small reusable icon set over hundreds of inconsistent assets.
+  1040→- Optimize SVGs before shipping.
+  1041→- Remove unnecessary SVG metadata and path complexity where safe.
+  1042→
+  1043→---
+  1044→
+  1045→# 41. Animation and Motion
+  1046→
+  1047→Animation must communicate state, hierarchy, causality, or spatial relationships.
+  1048→
+  1049→Use motion for:
+  1050→
+  1051→- entering/exiting elements
+  1052→- state changes
+  1053→- feedback
+  1054→- navigation transitions
+  1055→- loading progress
+  1056→- drag/drop
+  1057→- expanding/collapsing content
+  1058→- visualizing physical movement
+  1059→
+  1060→Avoid animation that delays the user or creates visual noise.
+  1061→
+  1062→Rules:
+  1063→
+  1064→- Keep transitions short for ordinary UI feedback.
+  1065→- Use consistent easing.
+  1066→- Animate transforms and opacity where possible.
+  1067→- Avoid animating expensive layout properties unnecessarily.
+  1068→- Respect `prefers-reduced-motion`.
+  1069→- Do not block interaction while decorative animation is running.
+  1070→- Provide deterministic animation state when testing.
+  1071→
+  1072→---
+  1073→
+  1074→# 42. Interaction Logic and State Machines
+  1075→
+  1076→Complex interfaces should use explicit state models.
+  1077→
+  1078→Example:
+  1079→
+  1080→```text
+  1081→idle
+  1082→  -> loading
+  1083→  -> success
+  1084→  -> error
+  1085→  -> retrying
+  1086→```
+  1087→
+  1088→For richer interactions, model:
+  1089→
+  1090→- current state
+  1091→- allowed events
+  1092→- transition conditions
+  1093→- side effects
+  1094→- rollback behavior
+  1095→- persistence requirements
+  1096→
+  1097→Avoid deeply nested boolean flags such as `isLoading`, `isSaving`, `isError`, `isRetrying`, and `isSuccess` when they can represent contradictory states. Prefer a single explicit state model where practical.
+  1098→
+  1099→---
+  1100→
+  1101→# 43. Mathematics and Geometry
+  1102→
+  1103→Use mathematically correct foundations for visual systems.
+  1104→
+  1105→Core topics:
+  1106→
+  1107→- arithmetic
+  1108→- ratios and proportions
+  1109→- percentages
+  1110→- interpolation
+  1111→- linear interpolation (lerp)
+  1112→- vectors
+  1113→- matrices
+  1114→- coordinate transforms
+  1115→- dot products
+  1116→- cross products
+  1117→- distances
+  1118→- angles
+  1119→- trigonometry
+  1120→- normalization
+  1121→- projections
+  1122→- Bézier curves
+  1123→- bounding boxes
+  1124→- collision geometry
+  1125→- quaternions for 3D rotation
+  1126→
+  1127→Example interpolation:
+  1128→
+  1129→```text
+  1130→lerp(a, b, t) = a + (b - a) * t
+  1131→```
+  1132→
+  1133→Keep units explicit. Do not mix pixels, meters, degrees, radians, seconds, and normalized coordinates without deliberate conversion.
+  1134→
+  1135→---
+  1136→
+  1137→# 44. Physics and Simulation
+  1138→
+  1139→When implementing physics, distinguish simulation time from rendering time.
+  1140→
+  1141→Typical concepts:
+  1142→
+  1143→- position
+  1144→- velocity
+  1145→- acceleration
+  1146→- mass
+  1147→- force
+  1148→- impulse
+  1149→- friction
+  1150→- restitution
+  1151→- gravity
+  1152→- drag
+  1153→- angular velocity
+  1154→- torque
+  1155→- collision detection
+  1156→- collision response
+  1157→
+  1158→Basic integration concept:
+  1159→
+  1160→```text
+  1161→velocity += acceleration * dt
+  1162→position += velocity * dt
+  1163→```
+  1164→
+  1165→Use a stable timestep for simulations that require deterministic or predictable behavior.
+  1166→
+  1167→Do not use frame rate directly as a substitute for elapsed time.
+  1168→
+  1169→---
+  1170→
+  1171→# 45. Collision Detection
+  1172→
+  1173→Choose collision algorithms based on object complexity.
+  1174→
+  1175→Possible approaches:
+  1176→
+  1177→- point vs rectangle
+  1178→- circle vs circle
+  1179→- circle vs rectangle
+  1180→- AABB
+  1181→- OBB
+  1182→- bounding sphere
+  1183→- ray intersection
+  1184→- polygon intersection
+  1185→- spatial hashing
+  1186→- quadtree
+  1187→- BVH
+  1188→
+  1189→Use broad-phase detection to eliminate impossible collisions before expensive narrow-phase tests.
+  1190→
+  1191→```text
+  1192→Broad Phase
+  1193→    -> Candidate Pairs
+  1194→    -> Narrow Phase
+  1195→    -> Collision Manifold
+  1196→    -> Resolution
+  1197→```
+  1198→
+  1199→---
+  1200→
+  1201→# 46. Camera and Coordinate Systems
+  1202→
+  1203→Always document coordinate conventions.
+  1204→
+  1205→Define:
+  1206→
+  1207→- origin
+  1208→- up axis
+  1209→- forward direction
+  1210→- handedness
+  1211→- world units
+  1212→- camera projection
+  1213→- screen coordinates
+  1214→
+  1215→For 2D and 3D camera systems, separate:
+  1216→
+  1217→```text
+  1218→World Space
+  1219→   -> View / Camera Space
+  1220→   -> Projection Space
+  1221→   -> Screen Space
+  1222→```
+  1223→
+  1224→This prevents common transformation and orientation bugs.
+  1225→
+  1226→---
+  1227→
+  1228→# 47. Procedural Generation
+  1229→
+  1230→For generated graphics, environments, layouts, or data:
+  1231→
+  1232→- Use deterministic seeds when reproducibility matters.
+  1233→- Separate generation from rendering.
+  1234→- Keep generation parameters configurable.
+  1235→- Avoid uncontrolled recursion or unbounded generation.
+  1236→- Cache expensive generated resources.
+  1237→- Validate generated geometry before rendering.
+  1238→- Provide predictable fallback behavior.
+  1239→
+  1240→For procedural systems, record the seed and major parameters so bugs can be reproduced.
+  1241→
+  1242→---
+  1243→
+  1244→# 48. Visual Performance
+  1245→
+  1246→Optimize visual systems based on measurements.
+  1247→
+  1248→Check:
+  1249→
+  1250→- frame rate
+  1251→- frame time
+  1252→- CPU time
+  1253→- GPU time
+  1254→- memory usage
+  1255→- texture memory
+  1256→- draw calls
+  1257→- DOM size
+  1258→- layout/reflow cost
+  1259→- JavaScript execution
+  1260→- animation cost
+  1261→
+  1262→For web interfaces:
+  1263→
+  1264→- avoid unnecessary DOM nodes
+  1265→- virtualize very large lists
+  1266→- lazy-load below-the-fold media
+  1267→- avoid layout thrashing
+  1268→- batch DOM reads/writes where necessary
+  1269→- use `requestAnimationFrame` for custom visual loops
+  1270→- stop animation when elements are not visible
+  1271→
+  1272→For 3D:
+  1273→
+  1274→- reduce draw calls
+  1275→- instance repeated geometry
+  1276→- use LOD
+  1277→- cull invisible objects
+  1278→- compress textures
+  1279→- avoid excessive post-processing
+  1280→
+  1281→---
+  1282→
+  1283→# 49. Design-to-Code Workflow
+  1284→
+  1285→Use this workflow for new interfaces:
+  1286→
+  1287→```text
+  1288→Requirements
+  1289→    -> User Flows
+  1290→    -> Information Architecture
+  1291→    -> Wireframe
+  1292→    -> Visual System
+  1293→    -> Design Tokens
+  1294→    -> Component Architecture
+  1295→    -> Interaction States
+  1296→    -> Responsive Rules
+  1297→    -> Implementation
+  1298→    -> Accessibility Review
+  1299→    -> Performance Review
+  1300→    -> Cross-Browser Testing
+  1301→    -> Final Polish
+  1302→```
+  1303→
+  1304→Do not jump directly from a vague requirement to a large page implementation.
+  1305→
+  1306→---
+  1307→
+  1308→# 50. Component Architecture
+  1309→
+  1310→Components should have:
+  1311→
+  1312→- clear responsibility
+  1313→- predictable inputs
+  1314→- predictable outputs/events
+  1315→- accessible semantics
+  1316→- loading/error states where relevant
+  1317→- responsive behavior
+  1318→- testable logic
+  1319→- minimal hidden side effects
+  1320→
+  1321→Separate reusable primitives from feature-specific components.
+  1322→
+  1323→Example hierarchy:
+  1324→
+  1325→```text
+  1326→Design Tokens
+  1327→  -> Primitive Components
+  1328→      -> Composite Components
+  1329→          -> Feature Components
+  1330→              -> Page / Screen
+  1331→```
+  1332→
+  1333→---
+  1334→
+  1335→# 51. UX for Complex Applications
+  1336→
+  1337→For dashboards, admin panels, agent systems, editors, builders, and automation platforms:
+  1338→
+  1339→- Use clear information hierarchy.
+  1340→- Group related controls.
+  1341→- Keep primary actions visible.
+  1342→- Provide keyboard shortcuts for expert workflows.
+  1343→- Preserve user context during navigation.
+  1344→- Use search and command palettes for large applications.
+  1345→- Support undo/redo where destructive or complex editing occurs.
+  1346→- Provide autosave only with clear status feedback.
+  1347→- Show operation progress for long-running tasks.
+  1348→- Never hide important failures behind silent notifications.
+  1349→
+  1350→For visual builders:
+  1351→
+  1352→- support zoom/pan
+  1353→- snap/alignment guides where useful
+  1354→- selection states
+  1355→- multi-select
+  1356→- keyboard navigation
+  1357→- undo/redo
+  1358→- copy/paste
+  1359→- connection validation
+  1360→- minimap for large canvases
+  1361→- deterministic serialization
+  1362→
+  1363→---
+  1364→
+  1365→# 52. Data Visualization
+  1366→
+  1367→Choose visualizations based on the data relationship.
+  1368→
+  1369→Use appropriate forms for:
+  1370→
+  1371→- trends
+  1372→- distributions
+  1373→- comparisons
+  1374→- proportions
+  1375→- geographic relationships
+  1376→- networks
+  1377→- timelines
+  1378→
+  1379→Rules:
+  1380→
+  1381→- Label important values.
+  1382→- Do not distort scales.
+  1383→- Provide accessible alternatives where necessary.
+  1384→- Support responsive resizing.
+  1385→- Avoid excessive animation.
+  1386→- Keep legends understandable.
+  1387→- Handle missing and zero values explicitly.
+  1388→
+  1389→---
+  1390→
+  1391→# 53. Design QA Checklist
+  1392→
+  1393→Before release:
+  1394→
+  1395→- [ ] Visual hierarchy is clear
+  1396→- [ ] Typography is consistent
+  1397→- [ ] Spacing follows tokens
+  1398→- [ ] Colors follow semantic tokens
+  1399→- [ ] All interactive states are implemented
+  1400→- [ ] Hover/focus/active/disabled states work
+  1401→- [ ] Loading states work
+  1402→- [ ] Empty states work
+  1403→- [ ] Error states work
+  1404→- [ ] Responsive layouts work
+  1405→- [ ] Keyboard navigation works
+  1406→- [ ] Screen-reader labels exist where needed
+  1407→- [ ] Reduced motion is supported
+  1408→- [ ] Images and SVGs are optimized
+  1409→- [ ] Animations do not cause jank
+  1410→- [ ] 2D/3D rendering is performant
+  1411→- [ ] Physics uses correct time units
+  1412→- [ ] Geometry transformations are validated
+  1413→- [ ] No unnecessary dependencies were added
+  1414→- [ ] Production build has been tested
+  1415→
+  1416→---
+  1417→
+  1418→# 54. AI Design-Agent Instructions
+  1419→
+  1420→When an AI coding agent uses this file:
+  1421→
+  1422→1. Inspect the existing design system before creating new components.
+  1423→2. Reuse existing tokens and components whenever possible.
+  1424→3. Do not invent random colors, spacing, typography, shadows, or radii.
+  1425→4. Preserve established visual language unless a redesign is explicitly requested.
+  1426→5. Implement all meaningful UI states.
+  1427→6. Make responsive behavior explicit.
+  1428→7. Check accessibility before considering the UI complete.
+  1429→8. Prefer CSS transforms and compositor-friendly animation for motion.
+  1430→9. Measure visual performance before applying complex optimizations.
+  1431→10. For 2D/3D work, separate simulation, scene state, rendering, and input logic.
+  1432→11. For physics/math, use explicit units and deterministic calculations where required.
+  1433→12. Do not introduce a library merely to solve a small problem that can be handled safely with existing project primitives.
+  1434→13. Validate interactions, not only screenshots.
+  1435→14. Test keyboard, mouse, touch, narrow screens, and reduced-motion behavior where relevant.
+  1436→15. Report visual, functional, accessibility, and performance validation performed.
+  1437→
+  1438→---
+  1439→
+  1440→# 55. Final Design Engineering Rule
+  1441→
+  1442→Every project should aim to be:
+  1443→
+  1444→**Beautiful + Usable + Accessible + Responsive + Fast + Consistent + Interactive + Mathematically Correct + Physically Predictable + Maintainable.**
+  1445→
+  1446→Design quality is not decoration. It is the combination of visual communication, interaction design, engineering correctness, performance, accessibility, and reliable behavior.
+  1447→
