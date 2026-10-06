@@ -49,7 +49,12 @@ export function StatusPill({
       text: "text-info",
     },
   };
-  const s = map[status];
+  const s = map[status] ?? {
+    label: status,
+    dot: "bg-muted-foreground",
+    bg: "bg-muted",
+    text: "text-muted-foreground",
+  };
   return (
     <span
       className={cn(

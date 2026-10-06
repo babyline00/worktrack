@@ -1,7 +1,20 @@
 "use client";
 
-import { useEffect } from "react";
-import { Menu, Search, Bell, HelpCircle, ChevronDown } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useSession, signOut } from "next-auth/react";
+import {
+  Menu,
+  Search,
+  Bell,
+  HelpCircle,
+  ChevronDown,
+  Moon,
+  Sun,
+  LogOut,
+  User as UserIcon,
+  Settings as SettingsIcon,
+  Smartphone,
+} from "lucide-react";
 import { useApp } from "@/lib/store";
 import { Avatar } from "./ui";
 import { Button } from "@/components/ui/button";
@@ -21,7 +34,7 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
-import { EMPLOYEES, PROJECTS, NOTIFICATIONS } from "@/lib/data";
+import { useEmployees, useProjects, useNotifications } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 
 const PAGE_LABELS: Record<string, string> = {
@@ -37,8 +50,30 @@ const PAGE_LABELS: Record<string, string> = {
 };
 
 export function Topbar() {
-  const { setPage, setSearchOpen, searchOpen, setSidebarOpen, page } = useApp();
-  const unreadCount = NOTIFICATIONS.filter((n) => n.unread).length;
+  const { setPage, setSearchOpen, searchOpen, setSidebarOpen, page, theme, toggleTheme } = useApp();
+  const { data: session } = useSession();
+  const { data: empData } = useEmployees();
+  const { data: projData } = useProjects();
+  const { data: notifData } = useNotifications();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    // Defer to next tick to avoid hydration mismatch
+    const id = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+
+  const EMPLOYEES_LIVE = empData?.employees ?? [];
+  const PROJECTS_LIVE = projData?.projects ?? [];
+  const NOTIFICATIONS_LIVE = notifData?.notifications ?? [];
+  const unreadCount = NOTIFICATIONS_LIVE.filter((n) => n.unread).length;
+  const userName = session?.user?.name ?? "Guest";
+  const userInitials = userName
+    .split(" ")
+    .map((s) => s[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
 
   // Cmd+K shortcut
   useEffect(() => {
@@ -95,6 +130,18 @@ export function Topbar() {
           <Search size={18} />
         </Button>
 
+        {/* Theme toggle */}
+        {mounted && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleTheme}
+            aria-label="Toggle theme"
+          >
+            {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
+          </Button>
+        )}
+
         {/* Notifications */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -120,7 +167,12 @@ export function Topbar() {
               </span>
             </div>
             <div className="scroll-thin max-h-96 overflow-y-auto">
-              {NOTIFICATIONS.map((n) => (
+              {NOTIFICATIONS_LIVE.length === 0 && (
+                <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+                  No notifications yet
+                </div>
+              )}
+              {NOTIFICATIONS_LIVE.map((n) => (
                 <button
                   key={n.id}
                   className={cn(
@@ -140,7 +192,7 @@ export function Topbar() {
                       {n.description}
                     </p>
                     <p className="mt-0.5 text-[11px] text-muted-foreground/80">
-                      {n.timeAgo}
+                      {n.timeAgo ?? "Just now"}
                     </p>
                   </div>
                 </button>
@@ -166,10 +218,16 @@ export function Topbar() {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button className="flex items-center gap-2 rounded-lg p-1 pr-2 transition hover:bg-muted">
-              <Avatar initials="AH" color="#2563eb" size={32} />
+              <Avatar initials={userInitials} color="#2563eb" size={32} />
               <div className="hidden text-left leading-tight sm:block">
-                <p className="text-sm font-semibold text-navy">Ahmad</p>
-                <p className="text-[11px] text-muted-foreground">Administrator</p>
+                <p className="text-sm font-semibold text-navy">
+                  {userName.split(" ")[0]}
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  {(session?.user as any)?.role === "EMPLOYEE"
+                    ? "Employee"
+                    : "Administrator"}
+                </p>
               </div>
               <ChevronDown size={14} className="text-muted-foreground" />
             </button>
@@ -177,18 +235,31 @@ export function Topbar() {
           <DropdownMenuContent align="end" className="w-52">
             <DropdownMenuLabel>
               <div className="leading-tight">
-                <p className="text-sm font-semibold text-navy">Ahmad</p>
-                <p className="text-xs text-muted-foreground">admin@worktrack.io</p>
+                <p className="text-sm font-semibold text-navy">{userName}</p>
+                <p className="text-xs text-muted-foreground">
+                  {session?.user?.email}
+                </p>
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>Profile</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setPage("settings")}>
-              Settings
+            <DropdownMenuItem>
+              <UserIcon size={14} className="mr-2" /> Profile
             </DropdownMenuItem>
-            <DropdownMenuItem>Activity Log</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setPage("settings")}>
+              <SettingsIcon size={14} className="mr-2" /> Settings
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => useApp.setState({ view: "employee" })}
+            >
+              <Smartphone size={14} className="mr-2" /> Mobile View
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-danger">Sign out</DropdownMenuItem>
+            <DropdownMenuItem
+              className="text-danger"
+              onClick={() => signOut({ redirect: false })}
+            >
+              <LogOut size={14} className="mr-2" /> Sign out
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </header>
@@ -213,7 +284,7 @@ export function Topbar() {
             ))}
           </CommandGroup>
           <CommandGroup heading="Employees">
-            {EMPLOYEES.slice(0, 8).map((e) => (
+            {EMPLOYEES_LIVE.slice(0, 8).map((e) => (
               <CommandItem
                 key={e.id}
                 onSelect={() => {
@@ -222,11 +293,7 @@ export function Topbar() {
                   setSearchOpen(false);
                 }}
               >
-                <Avatar
-                  initials={e.initials}
-                  color={e.avatarColor}
-                  size={20}
-                />
+                <Avatar initials={e.initials} color={e.avatarColor} size={20} />
                 <span>
                   {e.firstName} {e.lastName}
                 </span>
@@ -237,7 +304,7 @@ export function Topbar() {
             ))}
           </CommandGroup>
           <CommandGroup heading="Projects">
-            {PROJECTS.map((p) => (
+            {PROJECTS_LIVE.map((p) => (
               <CommandItem
                 key={p.id}
                 onSelect={() => {

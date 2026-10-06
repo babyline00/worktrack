@@ -13,7 +13,14 @@ export type PageKey =
   | "reports"
   | "settings";
 
+export type AppView = "login" | "admin" | "employee";
+
 interface AppState {
+  // View (auth-gated)
+  view: AppView;
+  setView: (v: AppView) => void;
+
+  // Page within admin view
   page: PageKey;
   setPage: (p: PageKey) => void;
 
@@ -44,9 +51,16 @@ interface AppState {
   // Live map view toggle
   liveMapMode: boolean;
   setLiveMapMode: (v: boolean) => void;
+
+  // Theme
+  theme: "light" | "dark";
+  toggleTheme: () => void;
 }
 
-export const useApp = create<AppState>((set) => ({
+export const useApp = create<AppState>((set, get) => ({
+  view: "login", // start at login; SessionProvider will swap to admin/employee after auth
+  setView: (v) => set({ view: v }),
+
   page: "dashboard",
   setPage: (p) => set({ page: p }),
 
@@ -70,4 +84,13 @@ export const useApp = create<AppState>((set) => ({
 
   liveMapMode: false,
   setLiveMapMode: (v) => set({ liveMapMode: v }),
+
+  theme: "light",
+  toggleTheme: () => {
+    const next = get().theme === "light" ? "dark" : "light";
+    set({ theme: next });
+    if (typeof document !== "undefined") {
+      document.documentElement.classList.toggle("dark", next === "dark");
+    }
+  },
 }));

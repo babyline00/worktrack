@@ -1,8 +1,12 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 import { useApp } from "@/lib/store";
 import { Sidebar } from "@/components/worktrack/sidebar";
 import { Topbar } from "@/components/worktrack/topbar";
+import { LoginScreen } from "@/components/worktrack/login";
+import { EmployeeMobileView } from "@/components/worktrack/employee-mobile";
 import { DashboardHome } from "@/components/worktrack/pages/dashboard";
 import { LiveAttendancePage } from "@/components/worktrack/pages/live";
 import { ProjectsPage } from "@/components/worktrack/pages/projects";
@@ -14,8 +18,40 @@ import { ReportsPage } from "@/components/worktrack/pages/reports";
 import { SettingsPage } from "@/components/worktrack/pages/settings";
 
 export default function Home() {
-  const { page } = useApp();
+  const { data: session, status } = useSession();
+  const { view, setView, page } = useApp();
+  const [hydrated, setHydrated] = useState(false);
 
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setHydrated(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+
+  // Auto-route based on session
+  useEffect(() => {
+    if (status === "loading") return;
+    if (status === "authenticated" && session?.user) {
+      const role = (session.user as any).role;
+      if (view === "login") {
+        setView(role === "EMPLOYEE" ? "employee" : "admin");
+      }
+    } else if (status === "unauthenticated") {
+      setView("login");
+    }
+  }, [status, session, view, setView]);
+
+  // Avoid hydration mismatch
+  if (!hydrated) return null;
+
+  if (status === "loading" || view === "login") {
+    return <LoginScreen />;
+  }
+
+  if (view === "employee") {
+    return <EmployeeMobileView />;
+  }
+
+  // Admin view
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />

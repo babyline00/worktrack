@@ -8,16 +8,16 @@ import {
   MapPin,
   ArrowLeft,
   Pencil,
-  CheckCircle2,
-  XCircle,
   Clock,
   Crosshair,
   Camera,
   ShieldCheck,
+  Trash2,
 } from "lucide-react";
-import { PROJECTS, EMPLOYEES } from "@/lib/data";
+import { useProjects, useEmployees, useCreateProject, useDeleteProject } from "@/lib/hooks";
 import { useApp } from "@/lib/store";
 import { Avatar, Card, PageHeader, StatusPill } from "../ui";
+import { RealMap } from "../real-map";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,7 +28,18 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogClose,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Select,
@@ -39,17 +50,31 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { toast } from "sonner";
 
 export function ProjectsPage() {
   const { selectedProjectId, setSelectedProject } = useApp();
+  const { data: projData, isLoading } = useProjects();
   const [createOpen, setCreateOpen] = useState(false);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
 
-  const selected = PROJECTS.find((p) => p.id === selectedProjectId);
+  const projects = projData?.projects ?? [];
+  const selected = projects.find((p) => p.id === selectedProjectId);
 
   if (selected) {
     return <ProjectDetail project={selected} onBack={() => setSelectedProject(null)} />;
+  }
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Projects" subtitle="Loading…" />
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-56 rounded-xl" />)}
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -57,118 +82,78 @@ export function ProjectsPage() {
       <PageHeader
         title="Projects"
         subtitle="Manage projects, locations and assigned employees."
-        actions={
-          <Button size="sm" onClick={() => setCreateOpen(true)}>
-            <Plus size={14} className="mr-2" /> Create Project
-          </Button>
-        }
+        actions={<Button size="sm" onClick={() => setCreateOpen(true)}><Plus size={14} className="mr-2" /> Create Project</Button>}
       />
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {PROJECTS.map((p) => {
-          const pct = Math.round((p.presentToday / p.totalEmployees) * 100);
-          return (
-            <Card
-              key={p.id}
-              className="cursor-pointer transition hover:border-primary/40 hover:shadow-md"
-              onClick={() => setSelectedProject(p.id)}
-            >
-              <div className="flex items-start justify-between">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-navy">
-                    {p.name}
-                  </p>
-                  <p className="text-xs text-muted-foreground">{p.code}</p>
+      {projects.length === 0 ? (
+        <Card className="flex flex-col items-center justify-center py-16 text-center">
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted text-3xl">📁</div>
+          <p className="mt-4 text-sm font-medium text-navy">No projects yet</p>
+          <p className="mt-1 text-xs text-muted-foreground">Create your first project to start managing your workforce.</p>
+          <Button className="mt-4" size="sm" onClick={() => setCreateOpen(true)}><Plus size={14} className="mr-2" /> Create Project</Button>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {projects.map((p) => {
+            const pct = p.totalEmployees > 0 ? Math.round((p.presentToday / p.totalEmployees) * 100) : 0;
+            return (
+              <Card key={p.id} className="cursor-pointer transition hover:border-primary/40 hover:shadow-md" onClick={() => setSelectedProject(p.id)}>
+                <div className="flex items-start justify-between">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-navy">{p.name}</p>
+                    <p className="text-xs text-muted-foreground">{p.code}</p>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); setDeleteId(p.id); }}>
+                      <Trash2 size={14} className="text-muted-foreground hover:text-danger" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => e.stopPropagation()}>
+                      <MoreVertical size={14} />
+                    </Button>
+                  </div>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <MoreVertical size={14} />
-                </Button>
-              </div>
 
-              <div className="mt-3">
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    "border-0",
-                    p.status === "active"
-                      ? "bg-success-soft text-success"
-                      : p.status === "paused"
-                        ? "bg-warning-soft text-warning"
-                        : "bg-muted text-muted-foreground",
-                  )}
-                >
-                  <span className="mr-1 h-1.5 w-1.5 rounded-full bg-current" />
-                  <span className="capitalize">{p.status}</span>
-                </Badge>
-              </div>
-
-              <div className="mt-4 flex items-center gap-4 text-xs text-muted-foreground">
-                <span className="flex items-center gap-1">
-                  <Users size={13} /> {p.totalEmployees} Employees
-                </span>
-                <span className="flex items-center gap-1">
-                  <MapPin size={13} /> {p.location}
-                </span>
-              </div>
-
-              <div className="mt-4">
-                <div className="mb-1.5 flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">
-                    Today's Attendance
-                  </span>
-                  <span className="font-semibold text-navy">
-                    {p.presentToday} / {p.totalEmployees}
-                  </span>
+                <div className="mt-3">
+                  <Badge variant="outline" className={cn(
+                    "border-0 capitalize",
+                    p.status === "active" ? "bg-success-soft text-success" : p.status === "paused" ? "bg-warning-soft text-warning" : "bg-muted text-muted-foreground",
+                  )}>
+                    <span className="mr-1 h-1.5 w-1.5 rounded-full bg-current" />{p.status}
+                  </Badge>
                 </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                  <div
-                    className={cn(
-                      "h-full rounded-full",
-                      pct >= 90
-                        ? "bg-success"
-                        : pct >= 75
-                          ? "bg-primary"
-                          : "bg-warning",
-                    )}
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
-              </div>
 
-              <Button
-                variant="outline"
-                size="sm"
-                className="mt-4 w-full"
-                onClick={() => setSelectedProject(p.id)}
-              >
-                View Project
-              </Button>
-            </Card>
-          );
-        })}
-      </div>
+                <div className="mt-4 flex items-center gap-4 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1"><Users size={13} /> {p.totalEmployees} Employees</span>
+                  <span className="flex items-center gap-1"><MapPin size={13} /> {p.location}</span>
+                </div>
+
+                <div className="mt-4">
+                  <div className="mb-1.5 flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Today's Attendance</span>
+                    <span className="font-semibold text-navy">{p.presentToday} / {p.totalEmployees}</span>
+                  </div>
+                  <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                    <div className={cn("h-full rounded-full", pct >= 90 ? "bg-success" : pct >= 75 ? "bg-primary" : "bg-warning")} style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+
+                <Button variant="outline" size="sm" className="mt-4 w-full" onClick={() => setSelectedProject(p.id)}>View Project</Button>
+              </Card>
+            );
+          })}
+        </div>
+      )}
 
       <CreateProjectDialog open={createOpen} onOpenChange={setCreateOpen} />
+      <DeleteProjectDialog id={deleteId} onClose={() => setDeleteId(null)} />
     </div>
   );
 }
 
-function ProjectDetail({
-  project,
-  onBack,
-}: {
-  project: (typeof PROJECTS)[number];
-  onBack: () => void;
-}) {
+function ProjectDetail({ project, onBack }: { project: any; onBack: () => void }) {
   const { setDrawerEmployee, setPage } = useApp();
-  const projectEmployees = EMPLOYEES.filter((e) =>
-    e.projects.includes(project.id),
-  );
+  const { data: empData } = useEmployees();
+  const projectEmployees = (empData?.employees ?? []).filter((e) => e.projectIds.includes(project.id));
 
   const stats = [
     { label: "Employees", value: project.totalEmployees },
@@ -180,31 +165,19 @@ function ProjectDetail({
 
   return (
     <div className="space-y-6 fade-in">
-      <button
-        onClick={onBack}
-        className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition hover:text-navy"
-      >
+      <button onClick={onBack} className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition hover:text-navy">
         <ArrowLeft size={14} /> Back to Projects
       </button>
 
       <PageHeader
         title={project.name}
-        subtitle={`${project.code} • ${project.client}`}
+        subtitle={`${project.code} • ${project.client ?? "—"}`}
         actions={
           <>
-            <Badge
-              variant="outline"
-              className="border-0 bg-success-soft text-success"
-            >
-              <span className="mr-1 h-1.5 w-1.5 rounded-full bg-success pulse-live" />
-              Active
+            <Badge variant="outline" className="border-0 bg-success-soft text-success">
+              <span className="mr-1 h-1.5 w-1.5 rounded-full bg-success pulse-live" />Active
             </Badge>
-            <Button variant="outline" size="sm">
-              <Pencil size={14} className="mr-2" /> Edit Project
-            </Button>
-            <Button variant="ghost" size="icon">
-              <MoreVertical size={16} />
-            </Button>
+            <Button variant="outline" size="sm"><Pencil size={14} className="mr-2" /> Edit Project</Button>
           </>
         }
       />
@@ -222,9 +195,7 @@ function ProjectDetail({
           <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
             {stats.map((s) => (
               <Card key={s.label} className="p-4">
-                <p className="text-xs font-medium text-muted-foreground">
-                  {s.label}
-                </p>
+                <p className="text-xs font-medium text-muted-foreground">{s.label}</p>
                 <p className="mt-1 text-2xl font-bold text-navy">{s.value}</p>
               </Card>
             ))}
@@ -232,68 +203,38 @@ function ProjectDetail({
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <Card>
-              <p className="mb-3 text-sm font-semibold text-navy">
-                Project Location
-              </p>
+              <p className="mb-3 text-sm font-semibold text-navy">Project Location</p>
               <div className="flex items-start gap-2 text-sm">
-                <MapPin
-                  size={16}
-                  className="mt-0.5 text-primary"
-                />
+                <MapPin size={16} className="mt-0.5 text-primary" />
                 <div>
                   <p className="font-medium text-navy">{project.location}</p>
-                  <p className="text-xs text-muted-foreground">
-                    Allowed Radius: {project.radiusM} meters
-                  </p>
-                  <p className="mt-1 font-mono text-xs text-muted-foreground">
-                    {project.coords.lat.toFixed(4)},{" "}
-                    {project.coords.lng.toFixed(4)}
-                  </p>
+                  <p className="text-xs text-muted-foreground">Allowed Radius: {project.radiusM} meters</p>
+                  <p className="mt-1 font-mono text-xs text-muted-foreground">{project.coords.lat.toFixed(4)}, {project.coords.lng.toFixed(4)}</p>
                 </div>
               </div>
-              <div className="relative mt-4 h-48 overflow-hidden rounded-lg bg-navy">
-                <div
-                  className="absolute inset-0 opacity-30"
-                  style={{
-                    backgroundImage:
-                      "linear-gradient(rgba(59,130,246,0.2) 1px, transparent 1px), linear-gradient(90deg, rgba(59,130,246,0.2) 1px, transparent 1px)",
-                    backgroundSize: "30px 30px",
-                  }}
+              <div className="mt-4">
+                <RealMap
+                  markers={[]}
+                  geofence={{ lat: project.coords.lat, lng: project.coords.lng, radiusM: project.radiusM, name: project.name }}
+                  height={192}
+                  center={[project.coords.lat, project.coords.lng]}
+                  zoom={14}
                 />
-                <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-                  <span className="relative flex h-10 w-10 items-center justify-center">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary/40" />
-                    <span className="relative flex h-5 w-5 items-center justify-center rounded-full bg-primary text-white">
-                      <MapPin size={12} />
-                    </span>
-                  </span>
-                  <div className="absolute left-1/2 top-full mt-2 -translate-x-1/2 whitespace-nowrap rounded bg-white px-2 py-1 text-xs font-medium text-navy shadow">
-                    Geofence: {project.radiusM}m
-                  </div>
-                </div>
               </div>
             </Card>
 
             <Card>
-              <p className="mb-3 text-sm font-semibold text-navy">
-                Project Info
-              </p>
+              <p className="mb-3 text-sm font-semibold text-navy">Project Info</p>
               <div className="space-y-3 text-sm">
-                <Row label="Client" value={project.client} />
+                <Row label="Client" value={project.client ?? "—"} />
                 <Row label="Code" value={project.code} />
-                <Row label="Start Date" value={project.startDate} />
-                <Row
-                  label="End Date"
-                  value={project.endDate ?? "Open-ended"}
-                />
-                <Row
-                  label="Status"
-                  value={<span className="capitalize">{project.status}</span>}
-                />
+                <Row label="Start Date" value={project.startDate ?? "—"} />
+                <Row label="End Date" value={project.endDate ?? "Open-ended"} />
+                <Row label="Status" value={<span className="capitalize">{project.status}</span>} />
               </div>
-              <p className="mt-4 text-sm text-muted-foreground">
-                {project.description}
-              </p>
+              {project.description && (
+                <p className="mt-4 text-sm text-muted-foreground">{project.description}</p>
+              )}
             </Card>
           </div>
         </TabsContent>
@@ -306,54 +247,30 @@ function ProjectDetail({
                   <tr className="text-left text-xs text-muted-foreground">
                     <th className="px-4 py-3 font-medium">Employee</th>
                     <th className="px-4 py-3 font-medium">Designation</th>
-                    <th className="hidden px-4 py-3 font-medium md:table-cell">
-                      Check-In
-                    </th>
+                    <th className="hidden px-4 py-3 font-medium md:table-cell">Check-In</th>
                     <th className="px-4 py-3 font-medium">Status</th>
                     <th className="px-4 py-3 font-medium">Action</th>
                   </tr>
                 </thead>
                 <tbody>
+                  {projectEmployees.length === 0 && (
+                    <tr><td colSpan={5} className="px-4 py-12 text-center text-sm text-muted-foreground">No employees assigned</td></tr>
+                  )}
                   {projectEmployees.map((e) => (
-                    <tr
-                      key={e.id}
-                      className="cursor-pointer border-t border-border transition hover:bg-muted/40"
-                      onClick={() => {
-                        setPage("live");
-                        setDrawerEmployee(e.id);
-                      }}
-                    >
+                    <tr key={e.id} className="cursor-pointer border-t border-border transition hover:bg-muted/40" onClick={() => { setPage("live"); setDrawerEmployee(e.id); }}>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2.5">
-                          <Avatar
-                            initials={e.initials}
-                            color={e.avatarColor}
-                            size={32}
-                          />
+                          <Avatar initials={e.initials} color={e.avatarColor} size={32} />
                           <div>
-                            <p className="text-sm font-medium text-navy">
-                              {e.firstName} {e.lastName}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {e.empId}
-                            </p>
+                            <p className="text-sm font-medium text-navy">{e.firstName} {e.lastName}</p>
+                            <p className="text-xs text-muted-foreground">{e.empId}</p>
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-sm text-muted-foreground">
-                        {e.designation}
-                      </td>
-                      <td className="hidden px-4 py-3 text-sm text-muted-foreground md:table-cell">
-                        {e.checkIn ?? "—"}
-                      </td>
-                      <td className="px-4 py-3">
-                        <StatusPill status={e.todaysStatus} />
-                      </td>
-                      <td className="px-4 py-3">
-                        <Button variant="ghost" size="sm">
-                          View
-                        </Button>
-                      </td>
+                      <td className="px-4 py-3 text-sm text-muted-foreground">{e.designation ?? "—"}</td>
+                      <td className="hidden px-4 py-3 text-sm text-muted-foreground md:table-cell">{e.checkIn ?? "—"}</td>
+                      <td className="px-4 py-3"><StatusPill status={e.todaysStatus as any} /></td>
+                      <td className="px-4 py-3"><Button variant="ghost" size="sm">View</Button></td>
                     </tr>
                   ))}
                 </tbody>
@@ -365,80 +282,36 @@ function ProjectDetail({
         <TabsContent value="attendance">
           <Card className="flex flex-col items-center justify-center py-16 text-center">
             <Clock size={40} className="text-muted-foreground/40" />
-            <p className="mt-3 text-sm font-medium text-navy">
-              Attendance analytics for this project
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Detailed attendance history and reports appear here.
-            </p>
-            <Button
-              className="mt-4"
-              size="sm"
-              onClick={() => {
-                setPage("attendance");
-                toast.success("Loading project attendance report");
-              }}
-            >
-              Open Attendance Report
-            </Button>
+            <p className="mt-3 text-sm font-medium text-navy">Attendance analytics for this project</p>
+            <p className="mt-1 text-xs text-muted-foreground">Detailed attendance history and reports appear here.</p>
+            <Button className="mt-4" size="sm" onClick={() => setPage("attendance")}>Open Attendance Report</Button>
           </Card>
         </TabsContent>
 
         <TabsContent value="map">
           <Card className="p-0">
-            <div className="relative h-[480px] overflow-hidden bg-navy">
-              <div
-                className="absolute inset-0 opacity-30"
-                style={{
-                  backgroundImage:
-                    "linear-gradient(rgba(59,130,246,0.2) 1px, transparent 1px), linear-gradient(90deg, rgba(59,130,246,0.2) 1px, transparent 1px)",
-                  backgroundSize: "40px 40px",
-                }}
+            <div className="border-b border-border p-3">
+              <p className="text-sm font-semibold text-navy">{project.name} — Live Workforce Map</p>
+            </div>
+            <div className="p-3">
+              <RealMap
+                markers={projectEmployees
+                  .filter((e) => e.todaysStatus !== "absent" && e.todaysStatus !== "leave" && e.coords.lat && e.coords.lng)
+                  .map((e) => ({
+                    id: e.id,
+                    lat: e.coords.lat,
+                    lng: e.coords.lng,
+                    initials: e.initials,
+                    color: e.todaysStatus === "working" ? "#16a34a" : e.todaysStatus === "break" ? "#f59e0b" : "#94a3b8",
+                    label: `${e.firstName} ${e.lastName}`,
+                    description: `${e.project} • ${e.todaysStatus}`,
+                    type: "employee" as const,
+                  }))}
+                geofence={{ lat: project.coords.lat, lng: project.coords.lng, radiusM: project.radiusM, name: project.name }}
+                height={480}
+                center={[project.coords.lat, project.coords.lng]}
+                zoom={13}
               />
-              <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-info/10" />
-
-              {projectEmployees
-                .filter(
-                  (e) => e.todaysStatus !== "absent" && e.todaysStatus !== "leave",
-                )
-                .map((e, i) => {
-                  const x = 20 + ((i * 53) % 60);
-                  const y = 20 + ((i * 89) % 60);
-                  const color =
-                    e.todaysStatus === "working"
-                      ? "#16a34a"
-                      : e.todaysStatus === "break"
-                        ? "#f59e0b"
-                        : "#94a3b8";
-                  return (
-                    <button
-                      key={e.id}
-                      onClick={() => {
-                        setPage("live");
-                        setDrawerEmployee(e.id);
-                      }}
-                      className="group absolute -translate-x-1/2 -translate-y-1/2"
-                      style={{ left: `${x}%`, top: `${y}%` }}
-                    >
-                      <span
-                        className="flex h-8 w-8 items-center justify-center rounded-full text-[10px] font-bold text-white shadow-lg ring-2 ring-white/20"
-                        style={{ background: color }}
-                      >
-                        {e.initials}
-                      </span>
-                      <span className="pointer-events-none absolute left-1/2 top-full mt-1 -translate-x-1/2 whitespace-nowrap rounded bg-navy/90 px-2 py-0.5 text-[10px] text-white opacity-0 transition group-hover:opacity-100">
-                        {e.firstName}
-                      </span>
-                    </button>
-                  );
-                })}
-
-              <div className="absolute bottom-3 left-3 rounded-lg bg-white/95 px-3 py-2 text-xs text-navy shadow">
-                <p className="font-semibold">{project.name}</p>
-                <p className="text-muted-foreground">
-                  {project.workingNow} working now
-                </p>
-              </div>
             </div>
           </Card>
         </TabsContent>
@@ -451,11 +324,12 @@ function ProjectDetail({
   );
 }
 
-function ProjectSettings({ project }: { project: (typeof PROJECTS)[number] }) {
+function ProjectSettings({ project }: { project: any }) {
   const [photo, setPhoto] = useState(true);
   const [location, setLocation] = useState(true);
   const [gallery, setGallery] = useState(true);
   const [geofence, setGeofence] = useState(true);
+  const [radius, setRadius] = useState(project.radiusM.toString());
 
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -465,15 +339,13 @@ function ProjectSettings({ project }: { project: (typeof PROJECTS)[number] }) {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-navy">Enable Geofence</p>
-              <p className="text-xs text-muted-foreground">
-                Restrict check-ins to the project radius
-              </p>
+              <p className="text-xs text-muted-foreground">Restrict check-ins to the project radius</p>
             </div>
             <Switch checked={geofence} onCheckedChange={setGeofence} />
           </div>
           <div>
             <Label className="text-xs">Allowed Radius (meters)</Label>
-            <Input defaultValue={project.radiusM} className="mt-1" />
+            <Input value={radius} onChange={(e) => setRadius(e.target.value)} className="mt-1" />
           </div>
           <div>
             <Label className="text-xs">Project Location</Label>
@@ -481,58 +353,23 @@ function ProjectSettings({ project }: { project: (typeof PROJECTS)[number] }) {
           </div>
         </div>
       </Card>
-
       <Card>
-        <p className="mb-4 text-sm font-semibold text-navy">
-          Attendance Requirements
-        </p>
+        <p className="mb-4 text-sm font-semibold text-navy">Attendance Requirements</p>
         <div className="space-y-3">
-          <ToggleRow
-            label="Require Photo"
-            desc="Capture photo at check-in/out"
-            checked={photo}
-            onChange={setPhoto}
-            icon={Camera}
-          />
-          <ToggleRow
-            label="Require Location"
-            desc="GPS location required"
-            checked={location}
-            onChange={setLocation}
-            icon={Crosshair}
-          />
-          <ToggleRow
-            label="Prevent Gallery Upload"
-            desc="Block photo uploads from gallery"
-            checked={gallery}
-            onChange={setGallery}
-            icon={ShieldCheck}
-          />
+          <ToggleRow label="Require Photo" desc="Capture photo at check-in/out" checked={photo} onChange={setPhoto} icon={Camera} />
+          <ToggleRow label="Require Location" desc="GPS location required" checked={location} onChange={setLocation} icon={Crosshair} />
+          <ToggleRow label="Prevent Gallery Upload" desc="Block photo uploads from gallery" checked={gallery} onChange={setGallery} icon={ShieldCheck} />
         </div>
       </Card>
     </div>
   );
 }
 
-function ToggleRow({
-  label,
-  desc,
-  checked,
-  onChange,
-  icon: Icon,
-}: {
-  label: string;
-  desc: string;
-  checked: boolean;
-  onChange: (v: boolean) => void;
-  icon: React.ElementType;
-}) {
+function ToggleRow({ label, desc, checked, onChange, icon: Icon }: { label: string; desc: string; checked: boolean; onChange: (v: boolean) => void; icon: React.ElementType }) {
   return (
     <div className="flex items-center justify-between rounded-lg border border-border p-3">
       <div className="flex items-start gap-3">
-        <span className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary">
-          <Icon size={14} />
-        </span>
+        <span className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary"><Icon size={14} /></span>
         <div>
           <p className="text-sm font-medium text-navy">{label}</p>
           <p className="text-xs text-muted-foreground">{desc}</p>
@@ -543,13 +380,7 @@ function ToggleRow({
   );
 }
 
-function Row({
-  label,
-  value,
-}: {
-  label: string;
-  value: React.ReactNode;
-}) {
+function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between border-b border-border pb-2">
       <span className="text-muted-foreground">{label}</span>
@@ -558,110 +389,61 @@ function Row({
   );
 }
 
-function CreateProjectDialog({
-  open,
-  onOpenChange,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-}) {
+function CreateProjectDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+  const createProject = useCreateProject();
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
   const [client, setClient] = useState("");
+  const [location, setLocation] = useState("");
+  const [lat, setLat] = useState("");
+  const [lng, setLng] = useState("");
   const [radius, setRadius] = useState("200");
+  const [description, setDescription] = useState("");
   const [status, setStatus] = useState("active");
   const [geofence, setGeofence] = useState(true);
 
   function submit() {
-    if (!name || !code) {
-      toast.error("Project name and code are required");
-      return;
-    }
-    onOpenChange(false);
-    toast.success("Project created successfully", {
-      description: `${name} (${code}) is now active.`,
+    if (!name || !code) return;
+    createProject.mutate({
+      name, code, client, location,
+      lat: lat || undefined,
+      lng: lng || undefined,
+      radiusM: radius,
+      description,
+      status,
+      geofence,
+    }, {
+      onSuccess: () => {
+        onOpenChange(false);
+        setName(""); setCode(""); setClient(""); setLocation(""); setLat(""); setLng(""); setRadius("200"); setDescription("");
+      },
     });
-    setName("");
-    setCode("");
-    setClient("");
-    setRadius("200");
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="scroll-thin max-h-[90vh] overflow-y-auto sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Create New Project</DialogTitle>
-        </DialogHeader>
-
+        <DialogHeader><DialogTitle>Create New Project</DialogTitle></DialogHeader>
         <div className="space-y-4 py-2">
           <div>
             <Label>Project Name *</Label>
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Dubai Home Technical"
-              className="mt-1"
-            />
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Dubai Home Technical" className="mt-1" />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Client</Label>
-              <Input
-                value={client}
-                onChange={(e) => setClient(e.target.value)}
-                placeholder="Client name"
-                className="mt-1"
-              />
-            </div>
-            <div>
-              <Label>Project Code</Label>
-              <Input
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                placeholder="DHT-001"
-                className="mt-1"
-              />
-            </div>
+            <div><Label>Client</Label><Input value={client} onChange={(e) => setClient(e.target.value)} placeholder="Client name" className="mt-1" /></div>
+            <div><Label>Project Code *</Label><Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="DHT-001" className="mt-1" /></div>
           </div>
-          <div>
-            <Label>Description</Label>
-            <Textarea
-              rows={2}
-              placeholder="Brief project description"
-              className="mt-1"
-            />
-          </div>
-          <div>
-            <Label>Location</Label>
-            <Input placeholder="Search location" className="mt-1" />
+          <div><Label>Description</Label><Textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief project description" className="mt-1" /></div>
+          <div><Label>Location</Label><Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Search location" className="mt-1" /></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><Label>Latitude</Label><Input value={lat} onChange={(e) => setLat(e.target.value)} placeholder="25.2048" className="mt-1" /></div>
+            <div><Label>Longitude</Label><Input value={lng} onChange={(e) => setLng(e.target.value)} placeholder="55.2708" className="mt-1" /></div>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Latitude</Label>
-              <Input placeholder="25.2048" className="mt-1" />
-            </div>
-            <div>
-              <Label>Longitude</Label>
-              <Input placeholder="55.2708" className="mt-1" />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Allowed Radius (m)</Label>
-              <Input
-                type="number"
-                value={radius}
-                onChange={(e) => setRadius(e.target.value)}
-                className="mt-1"
-              />
-            </div>
-            <div>
-              <Label>Status</Label>
+            <div><Label>Allowed Radius (m)</Label><Input type="number" value={radius} onChange={(e) => setRadius(e.target.value)} className="mt-1" /></div>
+            <div><Label>Status</Label>
               <Select value={status} onValueChange={setStatus}>
-                <SelectTrigger className="mt-1 capitalize">
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger className="mt-1 capitalize"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="active">Active</SelectItem>
                   <SelectItem value="paused">Paused</SelectItem>
@@ -673,21 +455,43 @@ function CreateProjectDialog({
           <div className="flex items-center justify-between rounded-lg border border-border p-3">
             <div>
               <p className="text-sm font-medium text-navy">Enable Geofence</p>
-              <p className="text-xs text-muted-foreground">
-                Restrict check-ins to defined radius
-              </p>
+              <p className="text-xs text-muted-foreground">Restrict check-ins to defined radius</p>
             </div>
             <Switch checked={geofence} onCheckedChange={setGeofence} />
           </div>
         </div>
-
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+          <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+          <Button onClick={submit} disabled={createProject.isPending}>
+            {createProject.isPending ? "Creating..." : "Create Project"}
           </Button>
-          <Button onClick={submit}>Create Project</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function DeleteProjectDialog({ id, onClose }: { id: string | null; onClose: () => void }) {
+  const deleteProject = useDeleteProject();
+  return (
+    <AlertDialog open={!!id} onOpenChange={(o) => !o && onClose()}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete Project?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Are you sure you want to delete this project? This action cannot be undone and will remove all associated assignments.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            className="bg-danger text-white hover:bg-danger/90"
+            onClick={() => { if (id) deleteProject.mutate(id, { onSuccess: onClose }); }}
+          >
+            Delete Project
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }

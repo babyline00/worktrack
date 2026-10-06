@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
+import { Providers } from "@/components/providers";
 
 const inter = Inter({
   variable: "--font-sans",
@@ -22,9 +23,7 @@ export const metadata: Metadata = {
     "Project Monitoring",
   ],
   authors: [{ name: "WorkTrack" }],
-  icons: {
-    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
-  },
+  icons: { icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg" },
   openGraph: {
     title: "WorkTrack — Workforce Management",
     description: "Real-time workforce attendance & project monitoring platform",
@@ -48,9 +47,11 @@ export default function RootLayout({
       <body
         className={`${inter.variable} font-sans antialiased bg-background text-foreground`}
       >
-        {children}
-        <Toaster />
-        <Sonner />
+        <Providers>
+          {children}
+          <Toaster />
+          <Sonner />
+        </Providers>
       </body>
     </html>
   );

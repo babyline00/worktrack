@@ -15,8 +15,9 @@ import {
   TrendingUp,
   Clock,
   FileText,
+  Trash2,
 } from "lucide-react";
-import { EMPLOYEES, PROJECTS, formatMins } from "@/lib/data";
+import { useEmployees, useProjects, useCreateEmployee, useDeleteEmployee } from "@/lib/hooks";
 import { useApp } from "@/lib/store";
 import { Avatar, Card, PageHeader, StatusPill } from "../ui";
 import { Button } from "@/components/ui/button";
@@ -37,16 +38,20 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogClose,
 } from "@/components/ui/dialog";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
-  Area,
-  AreaChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -54,230 +59,134 @@ export function EmployeesPage() {
   const { selectedEmployeeId, setSelectedEmployee } = useApp();
   const [addOpen, setAddOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const { data: empData, isLoading } = useEmployees();
 
-  const selected = EMPLOYEES.find((e) => e.id === selectedEmployeeId);
+  const employees = empData?.employees ?? [];
+  const selected = employees.find((e) => e.id === selectedEmployeeId);
 
   if (selected) {
-    return (
-      <EmployeeProfile
-        employee={selected}
-        onBack={() => setSelectedEmployee(null)}
-      />
-    );
+    return <EmployeeProfile employee={selected} onBack={() => setSelectedEmployee(null)} />;
   }
 
-  const filtered = EMPLOYEES.filter((e) => {
+  const filtered = employees.filter((e) => {
     const q = query.toLowerCase();
-    return (
-      !q ||
-      `${e.firstName} ${e.lastName}`.toLowerCase().includes(q) ||
-      e.empId.includes(q) ||
-      e.department.toLowerCase().includes(q)
-    );
+    return !q || `${e.firstName} ${e.lastName}`.toLowerCase().includes(q) || e.empId.includes(q) || (e.department ?? "").toLowerCase().includes(q);
   });
 
   return (
     <div className="space-y-6 fade-in">
       <PageHeader
         title="Employees"
-        subtitle={`${EMPLOYEES.length} total employees`}
-        actions={
-          <Button size="sm" onClick={() => setAddOpen(true)}>
-            <Plus size={14} className="mr-2" /> Add Employee
-          </Button>
-        }
+        subtitle={`${employees.length} total employees`}
+        actions={<Button size="sm" onClick={() => setAddOpen(true)}><Plus size={14} className="mr-2" /> Add Employee</Button>}
       />
 
       <Card className="p-3">
-        <Input
-          placeholder="Search by name, ID, or department..."
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          className="h-9"
-        />
+        <Input placeholder="Search by name, ID, or department..." value={query} onChange={(e) => setQuery(e.target.value)} className="h-9" />
       </Card>
 
-      <Card className="p-0">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/40">
-              <tr className="text-left text-xs text-muted-foreground">
-                <th className="px-4 py-3 font-medium">Employee</th>
-                <th className="px-4 py-3 font-medium">ID</th>
-                <th className="hidden px-4 py-3 font-medium md:table-cell">
-                  Department
-                </th>
-                <th className="hidden px-4 py-3 font-medium lg:table-cell">
-                  Projects
-                </th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="hidden px-4 py-3 font-medium md:table-cell">
-                  Today's Attendance
-                </th>
-                <th className="px-4 py-3 font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.slice(0, 30).map((e) => (
-                <tr
-                  key={e.id}
-                  className="cursor-pointer border-t border-border transition hover:bg-muted/40"
-                  onClick={() => setSelectedEmployee(e.id)}
-                >
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2.5">
-                      <Avatar
-                        initials={e.initials}
-                        color={e.avatarColor}
-                        size={34}
-                      />
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-navy">
-                          {e.firstName} {e.lastName}
-                        </p>
-                        <p className="truncate text-xs text-muted-foreground">
-                          {e.designation}
-                        </p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
-                    {e.empId}
-                  </td>
-                  <td className="hidden px-4 py-3 text-sm text-muted-foreground md:table-cell">
-                    {e.department}
-                  </td>
-                  <td className="hidden px-4 py-3 text-sm text-muted-foreground lg:table-cell">
-                    {e.projects.length} Projects
-                  </td>
-                  <td className="px-4 py-3">
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        "border-0",
-                        e.status === "active"
-                          ? "bg-success-soft text-success"
-                          : "bg-muted text-muted-foreground",
-                      )}
-                    >
-                      <span className="mr-1 h-1.5 w-1.5 rounded-full bg-current" />
-                      <span className="capitalize">{e.status}</span>
-                    </Badge>
-                  </td>
-                  <td className="hidden px-4 py-3 md:table-cell">
-                    <StatusPill status={e.todaysStatus} />
-                  </td>
-                  <td className="px-4 py-3">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={(ev) => ev.stopPropagation()}
-                    >
-                      <MoreVertical size={14} />
-                    </Button>
-                  </td>
+      {isLoading ? (
+        <Skeleton className="h-96 rounded-xl" />
+      ) : (
+        <Card className="p-0">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/40">
+                <tr className="text-left text-xs text-muted-foreground">
+                  <th className="px-4 py-3 font-medium">Employee</th>
+                  <th className="px-4 py-3 font-medium">ID</th>
+                  <th className="hidden px-4 py-3 font-medium md:table-cell">Department</th>
+                  <th className="hidden px-4 py-3 font-medium lg:table-cell">Projects</th>
+                  <th className="px-4 py-3 font-medium">Status</th>
+                  <th className="hidden px-4 py-3 font-medium md:table-cell">Today's Attendance</th>
+                  <th className="px-4 py-3 font-medium">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {filtered.length > 30 && (
-          <div className="border-t border-border p-3 text-center text-xs text-muted-foreground">
-            Showing 30 of {filtered.length} employees. Use search to narrow down.
+              </thead>
+              <tbody>
+                {filtered.slice(0, 30).map((e) => (
+                  <tr key={e.id} className="cursor-pointer border-t border-border transition hover:bg-muted/40" onClick={() => setSelectedEmployee(e.id)}>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2.5">
+                        <Avatar initials={e.initials} color={e.avatarColor} size={34} />
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-navy">{e.firstName} {e.lastName}</p>
+                          <p className="truncate text-xs text-muted-foreground">{e.designation}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{e.empId}</td>
+                    <td className="hidden px-4 py-3 text-sm text-muted-foreground md:table-cell">{e.department}</td>
+                    <td className="hidden px-4 py-3 text-sm text-muted-foreground lg:table-cell">{e.projects.length} Projects</td>
+                    <td className="px-4 py-3">
+                      <Badge variant="outline" className={cn("border-0", e.status === "active" ? "bg-success-soft text-success" : "bg-muted text-muted-foreground")}>
+                        <span className="mr-1 h-1.5 w-1.5 rounded-full bg-current" /><span className="capitalize">{e.status}</span>
+                      </Badge>
+                    </td>
+                    <td className="hidden px-4 py-3 md:table-cell"><StatusPill status={e.todaysStatus as any} /></td>
+                    <td className="px-4 py-3">
+                      <div className="flex gap-1">
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(ev) => { ev.stopPropagation(); setDeleteId(e.id); }}>
+                          <Trash2 size={14} className="text-muted-foreground hover:text-danger" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(ev) => ev.stopPropagation()}>
+                          <MoreVertical size={14} />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        )}
-      </Card>
+          {filtered.length > 30 && (
+            <div className="border-t border-border p-3 text-center text-xs text-muted-foreground">
+              Showing 30 of {filtered.length} employees. Use search to narrow down.
+            </div>
+          )}
+        </Card>
+      )}
 
       <AddEmployeeDialog open={addOpen} onOpenChange={setAddOpen} />
+      <DeleteEmployeeDialog id={deleteId} onClose={() => setDeleteId(null)} />
     </div>
   );
 }
 
-function EmployeeProfile({
-  employee,
-  onBack,
-}: {
-  employee: (typeof EMPLOYEES)[number];
-  onBack: () => void;
-}) {
+function EmployeeProfile({ employee, onBack }: { employee: any; onBack: () => void }) {
   const monthlyTrend = Array.from({ length: 30 }, (_, i) => ({
     label: `D${i + 1}`,
     hours: 6 + Math.round(Math.sin(i / 4) * 2 + (i % 3)),
   }));
-
   const stats = [
-    {
-      label: "Present This Month",
-      value: employee.presentThisMonth,
-      icon: Calendar,
-      tone: "text-success",
-    },
-    {
-      label: "Late",
-      value: employee.lateThisMonth,
-      icon: Clock,
-      tone: "text-warning",
-    },
-    {
-      label: "Total Hours",
-      value: `${employee.totalHours}h`,
-      icon: Clock,
-      tone: "text-primary",
-    },
-    {
-      label: "Attendance Rate",
-      value: `${employee.attendanceRate}%`,
-      icon: TrendingUp,
-      tone: "text-info",
-    },
+    { label: "Present This Month", value: employee.presentThisMonth, icon: Calendar, tone: "text-success" },
+    { label: "Late", value: employee.lateThisMonth, icon: Clock, tone: "text-warning" },
+    { label: "Total Hours", value: `${employee.totalHours}h`, icon: Clock, tone: "text-primary" },
+    { label: "Attendance Rate", value: `${employee.attendanceRate}%`, icon: TrendingUp, tone: "text-info" },
   ];
-
-  const empProjects = PROJECTS.filter((p) => employee.projects.includes(p.id));
 
   return (
     <div className="space-y-6 fade-in">
-      <button
-        onClick={onBack}
-        className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition hover:text-navy"
-      >
+      <button onClick={onBack} className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition hover:text-navy">
         <ArrowLeft size={14} /> Back to Employees
       </button>
 
       <Card>
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-4">
-            <Avatar
-              initials={employee.initials}
-              color={employee.avatarColor}
-              size={64}
-            />
+            <Avatar initials={employee.initials} color={employee.avatarColor} size={64} />
             <div>
-              <h2 className="text-xl font-bold text-navy">
-                {employee.firstName} {employee.lastName}
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                Employee ID: {employee.empId}
-              </p>
+              <h2 className="text-xl font-bold text-navy">{employee.firstName} {employee.lastName}</h2>
+              <p className="text-sm text-muted-foreground">Employee ID: {employee.empId}</p>
               <div className="mt-1.5 flex items-center gap-2">
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    "border-0",
-                    employee.status === "active"
-                      ? "bg-success-soft text-success"
-                      : "bg-muted text-muted-foreground",
-                  )}
-                >
+                <Badge variant="outline" className={cn("border-0", employee.status === "active" ? "bg-success-soft text-success" : "bg-muted text-muted-foreground")}>
                   <span className="capitalize">{employee.status}</span>
                 </Badge>
-                <StatusPill status={employee.todaysStatus} />
+                <StatusPill status={employee.todaysStatus as any} />
               </div>
             </div>
           </div>
-          <Button variant="outline" size="sm">
-            <Pencil size={14} className="mr-2" /> Edit Employee
-          </Button>
+          <Button variant="outline" size="sm"><Pencil size={14} className="mr-2" /> Edit Employee</Button>
         </div>
       </Card>
 
@@ -303,86 +212,25 @@ function EmployeeProfile({
               );
             })}
           </div>
-
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <Card>
-              <p className="mb-3 text-sm font-semibold text-navy">
-                Personal Information
-              </p>
+              <p className="mb-3 text-sm font-semibold text-navy">Personal Information</p>
               <div className="space-y-3 text-sm">
-                <InfoRow
-                  icon={Mail}
-                  label="Email"
-                  value={employee.email}
-                />
-                <InfoRow
-                  icon={Phone}
-                  label="Phone"
-                  value={employee.phone}
-                />
-                <InfoRow
-                  icon={Building2}
-                  label="Department"
-                  value={employee.department}
-                />
-                <InfoRow
-                  icon={Briefcase}
-                  label="Designation"
-                  value={employee.designation}
-                />
+                <InfoRow icon={Mail} label="Email" value={employee.email ?? "—"} />
+                <InfoRow icon={Phone} label="Phone" value={employee.phone ?? "—"} />
+                <InfoRow icon={Building2} label="Department" value={employee.department ?? "—"} />
+                <InfoRow icon={Briefcase} label="Designation" value={employee.designation ?? "—"} />
               </div>
             </Card>
-
             <Card>
-              <p className="mb-3 text-sm font-semibold text-navy">
-                Working Hours (Last 30 Days)
-              </p>
+              <p className="mb-3 text-sm font-semibold text-navy">Working Hours (Last 30 Days)</p>
               <div className="h-44">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={monthlyTrend}>
-                    <defs>
-                      <linearGradient id="g2" x1="0" y1="0" x2="0" y2="1">
-                        <stop
-                          offset="5%"
-                          stopColor="#2563eb"
-                          stopOpacity={0.3}
-                        />
-                        <stop
-                          offset="95%"
-                          stopColor="#2563eb"
-                          stopOpacity={0}
-                        />
-                      </linearGradient>
-                    </defs>
-                    <XAxis
-                      dataKey="label"
-                      tick={{ fontSize: 10, fill: "#94a3b8" }}
-                      axisLine={false}
-                      tickLine={false}
-                      interval={5}
-                    />
-                    <YAxis
-                      tick={{ fontSize: 10, fill: "#94a3b8" }}
-                      axisLine={false}
-                      tickLine={false}
-                      width={24}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        borderRadius: 8,
-                        border: "1px solid var(--border)",
-                        fontSize: 12,
-                      }}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="hours"
-                      stroke="#2563eb"
-                      strokeWidth={2}
-                      fill="url(#g2)"
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
+                <p className="text-sm text-muted-foreground">Total: {employee.totalHours}h • Avg: {(employee.totalHours / 30).toFixed(1)}h/day</p>
+                <div className="mt-4 flex h-32 items-end gap-1">
+                  {monthlyTrend.map((d, i) => (
+                    <div key={i} className="flex-1 rounded-t bg-primary/30 hover:bg-primary" style={{ height: `${(d.hours / 12) * 100}%` }} title={`Day ${i + 1}: ${d.hours}h`} />
+                  ))}
+                </div>
               </div>
             </Card>
           </div>
@@ -391,40 +239,30 @@ function EmployeeProfile({
         <TabsContent value="attendance">
           <Card className="flex flex-col items-center justify-center py-16 text-center">
             <Clock size={40} className="text-muted-foreground/40" />
-            <p className="mt-3 text-sm font-medium text-navy">
-              Attendance history
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Daily check-in/out records, photos, and locations appear here.
-            </p>
+            <p className="mt-3 text-sm font-medium text-navy">Attendance history</p>
+            <p className="mt-1 text-xs text-muted-foreground">Daily check-in/out records, photos, and locations appear here.</p>
           </Card>
         </TabsContent>
 
         <TabsContent value="projects" className="space-y-3">
-          {empProjects.map((p) => (
-            <Card key={p.id} className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-semibold text-navy">{p.name}</p>
-                <p className="text-xs text-muted-foreground">
-                  {p.code} • {p.location}
-                </p>
-              </div>
-              <Badge
-                variant="outline"
-                className="border-0 bg-success-soft text-success"
-              >
-                Active
-              </Badge>
-            </Card>
-          ))}
+          {employee.projects.length === 0 ? (
+            <Card className="py-8 text-center text-sm text-muted-foreground">No projects assigned</Card>
+          ) : (
+            employee.projects.map((p: string, i: number) => (
+              <Card key={i} className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-navy">{p}</p>
+                </div>
+                <Badge variant="outline" className="border-0 bg-success-soft text-success">Active</Badge>
+              </Card>
+            ))
+          )}
         </TabsContent>
 
         <TabsContent value="activity">
           <Card className="flex flex-col items-center justify-center py-16 text-center">
             <p className="text-sm font-medium text-navy">No recent activity</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Activity log will appear here as the employee uses WorkTrack.
-            </p>
+            <p className="mt-1 text-xs text-muted-foreground">Activity log will appear here as the employee uses WorkTrack.</p>
           </Card>
         </TabsContent>
 
@@ -432,12 +270,8 @@ function EmployeeProfile({
           <Card className="flex flex-col items-center justify-center py-16 text-center">
             <FileText size={40} className="text-muted-foreground/40" />
             <p className="mt-3 text-sm font-medium text-navy">No documents</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Upload contracts, IDs, or certificates for this employee.
-            </p>
-            <Button variant="outline" size="sm" className="mt-4">
-              <Upload size={14} className="mr-2" /> Upload Document
-            </Button>
+            <p className="mt-1 text-xs text-muted-foreground">Upload contracts, IDs, or certificates for this employee.</p>
+            <Button variant="outline" size="sm" className="mt-4"><Upload size={14} className="mr-2" /> Upload Document</Button>
           </Card>
         </TabsContent>
       </Tabs>
@@ -445,15 +279,7 @@ function EmployeeProfile({
   );
 }
 
-function InfoRow({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: React.ElementType;
-  label: string;
-  value: string;
-}) {
+function InfoRow({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string }) {
   return (
     <div className="flex items-center gap-3 border-b border-border pb-2">
       <Icon size={14} className="text-muted-foreground" />
@@ -463,13 +289,11 @@ function InfoRow({
   );
 }
 
-function AddEmployeeDialog({
-  open,
-  onOpenChange,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-}) {
+function AddEmployeeDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+  const createEmployee = useCreateEmployee();
+  const { data: projData } = useProjects();
+  const projects = projData?.projects ?? [];
+
   const [first, setFirst] = useState("");
   const [last, setLast] = useState("");
   const [empId, setEmpId] = useState("");
@@ -479,39 +303,39 @@ function AddEmployeeDialog({
   const [designation, setDesignation] = useState("");
   const [password, setPassword] = useState("");
   const [active, setActive] = useState(true);
-  const [assigned, setAssigned] = useState<string[]>(["p1"]);
+  const [assigned, setAssigned] = useState<string[]>([]);
 
   function toggleProject(id: string) {
-    setAssigned((prev) =>
-      prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id],
-    );
+    setAssigned((prev) => prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]);
   }
 
   function submit() {
-    if (!first || !empId || !password) {
-      toast.error("First name, employee ID, and password are required");
+    if (!first || !empId) {
+      toast.error("First name and employee ID are required");
       return;
     }
-    onOpenChange(false);
-    toast.success("Employee added successfully", {
-      description: `${first} ${last} has been added.`,
+    createEmployee.mutate({
+      firstName: first,
+      lastName: last,
+      empId,
+      email,
+      phone,
+      department,
+      designation,
+      status: active ? "active" : "inactive",
+      projectIds: assigned,
+    }, {
+      onSuccess: () => {
+        onOpenChange(false);
+        setFirst(""); setLast(""); setEmpId(""); setEmail(""); setPhone(""); setDesignation(""); setPassword(""); setAssigned([]);
+      },
     });
-    setFirst("");
-    setLast("");
-    setEmpId("");
-    setEmail("");
-    setPhone("");
-    setDesignation("");
-    setPassword("");
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="scroll-thin max-h-[90vh] overflow-y-auto sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Add Employee</DialogTitle>
-        </DialogHeader>
-
+        <DialogHeader><DialogTitle>Add Employee</DialogTitle></DialogHeader>
         <div className="space-y-4 py-2">
           <div className="flex flex-col items-center gap-2">
             <button className="flex h-20 w-20 items-center justify-center rounded-full border-2 border-dashed border-border bg-muted/30 text-muted-foreground transition hover:border-primary">
@@ -519,113 +343,36 @@ function AddEmployeeDialog({
             </button>
             <p className="text-xs text-muted-foreground">Profile Photo</p>
           </div>
-
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>First Name *</Label>
-              <Input
-                value={first}
-                onChange={(e) => setFirst(e.target.value)}
-                className="mt-1"
-              />
-            </div>
-            <div>
-              <Label>Last Name</Label>
-              <Input
-                value={last}
-                onChange={(e) => setLast(e.target.value)}
-                className="mt-1"
-              />
-            </div>
+            <div><Label>First Name *</Label><Input value={first} onChange={(e) => setFirst(e.target.value)} className="mt-1" /></div>
+            <div><Label>Last Name</Label><Input value={last} onChange={(e) => setLast(e.target.value)} className="mt-1" /></div>
           </div>
-
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Employee ID *</Label>
-              <Input
-                value={empId}
-                onChange={(e) => setEmpId(e.target.value)}
-                placeholder="2585436369"
-                className="mt-1"
-              />
-            </div>
-            <div>
-              <Label>Phone</Label>
-              <Input
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                className="mt-1"
-              />
-            </div>
+            <div><Label>Employee ID *</Label><Input value={empId} onChange={(e) => setEmpId(e.target.value)} placeholder="2585436369" className="mt-1" /></div>
+            <div><Label>Phone</Label><Input value={phone} onChange={(e) => setPhone(e.target.value)} className="mt-1" /></div>
           </div>
-
-          <div>
-            <Label>Email</Label>
-            <Input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="mt-1"
-            />
-          </div>
-
+          <div><Label>Email</Label><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="mt-1" /></div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label>Department</Label>
               <Select value={department} onValueChange={setDepartment}>
-                <SelectTrigger className="mt-1">
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {[
-                    "Marketing",
-                    "Engineering",
-                    "Operations",
-                    "Field",
-                    "Sales",
-                    "Finance",
-                    "HR",
-                  ].map((d) => (
-                    <SelectItem key={d} value={d}>
-                      {d}
-                    </SelectItem>
+                  {["Marketing", "Engineering", "Operations", "Field", "Sales", "Finance", "HR"].map((d) => (
+                    <SelectItem key={d} value={d}>{d}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <Label>Designation</Label>
-              <Input
-                value={designation}
-                onChange={(e) => setDesignation(e.target.value)}
-                placeholder="Marketing Executive"
-                className="mt-1"
-              />
-            </div>
+            <div><Label>Designation</Label><Input value={designation} onChange={(e) => setDesignation(e.target.value)} placeholder="Marketing Executive" className="mt-1" /></div>
           </div>
-
-          <div>
-            <Label>Password *</Label>
-            <Input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="mt-1"
-            />
-          </div>
-
           <div>
             <Label>Assign Projects</Label>
             <div className="mt-2 space-y-2">
-              {PROJECTS.map((p) => (
-                <label
-                  key={p.id}
-                  className="flex cursor-pointer items-center gap-3 rounded-lg border border-border p-2.5 transition hover:bg-muted"
-                >
-                  <Checkbox
-                    checked={assigned.includes(p.id)}
-                    onCheckedChange={() => toggleProject(p.id)}
-                  />
+              {projects.length === 0 && <p className="text-xs text-muted-foreground">No projects available. Create a project first.</p>}
+              {projects.map((p) => (
+                <label key={p.id} className="flex cursor-pointer items-center gap-3 rounded-lg border border-border p-2.5 transition hover:bg-muted">
+                  <Checkbox checked={assigned.includes(p.id)} onCheckedChange={() => toggleProject(p.id)} />
                   <div className="flex-1">
                     <p className="text-sm font-medium text-navy">{p.name}</p>
                     <p className="text-xs text-muted-foreground">{p.code}</p>
@@ -634,31 +381,45 @@ function AddEmployeeDialog({
               ))}
             </div>
           </div>
-
           <div className="flex items-center justify-between rounded-lg border border-border p-3">
             <p className="text-sm font-medium text-navy">Status</p>
-            <Badge
-              variant="outline"
-              className={cn(
-                "border-0 cursor-pointer",
-                active
-                  ? "bg-success-soft text-success"
-                  : "bg-muted text-muted-foreground",
-              )}
-              onClick={() => setActive(!active)}
-            >
-              <span className="capitalize">{active ? "active" : "inactive"}</span>
+            <Badge variant="outline" className={cn("border-0 cursor-pointer capitalize", active ? "bg-success-soft text-success" : "bg-muted text-muted-foreground")} onClick={() => setActive(!active)}>
+              {active ? "active" : "inactive"}
             </Badge>
           </div>
         </div>
-
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+          <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+          <Button onClick={submit} disabled={createEmployee.isPending}>
+            {createEmployee.isPending ? "Adding..." : "Create Employee"}
           </Button>
-          <Button onClick={submit}>Create Employee</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function DeleteEmployeeDialog({ id, onClose }: { id: string | null; onClose: () => void }) {
+  const deleteEmployee = useDeleteEmployee();
+  return (
+    <AlertDialog open={!!id} onOpenChange={(o) => !o && onClose()}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete Employee?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Are you sure you want to delete this employee? This action cannot be undone and will remove all associated records.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            className="bg-danger text-white hover:bg-danger/90"
+            onClick={() => { if (id) deleteEmployee.mutate(id, { onSuccess: onClose }); }}
+          >
+            Delete Employee
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
