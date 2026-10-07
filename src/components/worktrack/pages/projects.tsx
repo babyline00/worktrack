@@ -17,7 +17,9 @@ import {
 import { useProjects, useEmployees, useCreateProject, useDeleteProject } from "@/lib/hooks";
 import { useApp } from "@/lib/store";
 import { Avatar, Card, PageHeader, StatusPill } from "../ui";
-import { RealMap } from "../real-map";
+import dynamic from "next/dynamic";
+const RealMap = dynamic(() => import("../real-map").then((m) => m.RealMap), { ssr: false, loading: () => <div className="h-[480px] rounded-lg bg-muted animate-pulse" /> });
+const MapLocationPicker = dynamic(() => import("../map-location-picker").then((m) => m.MapLocationPicker), { ssr: false, loading: () => <div className="h-[300px] rounded-lg bg-muted animate-pulse" /> });
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -406,9 +408,9 @@ function CreateProjectDialog({ open, onOpenChange }: { open: boolean; onOpenChan
     if (!name || !code) return;
     createProject.mutate({
       name, code, client, location,
-      lat: lat || undefined,
-      lng: lng || undefined,
-      radiusM: radius,
+      latitude: lat || undefined,
+      longitude: lng || undefined,
+      geofenceRadius: radius,
       description,
       status,
       geofence,
@@ -422,7 +424,7 @@ function CreateProjectDialog({ open, onOpenChange }: { open: boolean; onOpenChan
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="scroll-thin max-h-[90vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="scroll-thin max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader><DialogTitle>Create New Project</DialogTitle></DialogHeader>
         <div className="space-y-4 py-2">
           <div>
@@ -434,13 +436,56 @@ function CreateProjectDialog({ open, onOpenChange }: { open: boolean; onOpenChan
             <div><Label>Project Code *</Label><Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="DHT-001" className="mt-1" /></div>
           </div>
           <div><Label>Description</Label><Textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief project description" className="mt-1" /></div>
-          <div><Label>Location</Label><Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Search location" className="mt-1" /></div>
-          <div className="grid grid-cols-2 gap-3">
-            <div><Label>Latitude</Label><Input value={lat} onChange={(e) => setLat(e.target.value)} placeholder="25.2048" className="mt-1" /></div>
-            <div><Label>Longitude</Label><Input value={lng} onChange={(e) => setLng(e.target.value)} placeholder="55.2708" className="mt-1" /></div>
+
+          {/* Interactive Map Location Picker */}
+          <div>
+            <Label>Project Location — Click on map to set coordinates</Label>
+            <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Location name (e.g. Dubai, UAE)" className="mt-1 mb-2" />
+            <MapLocationPicker
+              lat={lat}
+              lng={lng}
+              radius={parseInt(radius) || 200}
+              onLocationChange={(newLat, newLng) => {
+                setLat(newLat.toFixed(6));
+                setLng(newLng.toFixed(6));
+              }}
+            />
           </div>
+
+          {/* Coordinates + Radius */}
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <Label>Latitude</Label>
+              <Input value={lat} onChange={(e) => setLat(e.target.value)} placeholder="25.2048" className="mt-1 font-mono text-xs" />
+            </div>
+            <div>
+              <Label>Longitude</Label>
+              <Input value={lng} onChange={(e) => setLng(e.target.value)} placeholder="55.2708" className="mt-1 font-mono text-xs" />
+            </div>
+            <div>
+              <Label>Radius (m)</Label>
+              <Input type="number" value={radius} onChange={(e) => setRadius(e.target.value)} className="mt-1" />
+            </div>
+          </div>
+
+          {/* Radius slider */}
+          <div>
+            <div className="mb-1 flex items-center justify-between">
+              <Label className="text-xs">Geofence Radius: {radius}m</Label>
+              <span className="text-xs text-muted-foreground">{(parseInt(radius) * 3.14 * 2 / 1000).toFixed(2)} km circumference</span>
+            </div>
+            <input
+              type="range"
+              min="50"
+              max="1000"
+              step="50"
+              value={radius}
+              onChange={(e) => setRadius(e.target.value)}
+              className="w-full accent-primary"
+            />
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
-            <div><Label>Allowed Radius (m)</Label><Input type="number" value={radius} onChange={(e) => setRadius(e.target.value)} className="mt-1" /></div>
             <div><Label>Status</Label>
               <Select value={status} onValueChange={setStatus}>
                 <SelectTrigger className="mt-1 capitalize"><SelectValue /></SelectTrigger>
@@ -451,18 +496,20 @@ function CreateProjectDialog({ open, onOpenChange }: { open: boolean; onOpenChan
                 </SelectContent>
               </Select>
             </div>
-          </div>
-          <div className="flex items-center justify-between rounded-lg border border-border p-3">
-            <div>
-              <p className="text-sm font-medium text-navy">Enable Geofence</p>
-              <p className="text-xs text-muted-foreground">Restrict check-ins to defined radius</p>
+            <div className="flex items-end">
+              <div className="flex w-full items-center justify-between rounded-lg border border-border p-3">
+                <div>
+                  <p className="text-sm font-medium text-navy">Enable Geofence</p>
+                  <p className="text-xs text-muted-foreground">Restrict check-ins</p>
+                </div>
+                <Switch checked={geofence} onCheckedChange={setGeofence} />
+              </div>
             </div>
-            <Switch checked={geofence} onCheckedChange={setGeofence} />
           </div>
         </div>
         <DialogFooter>
           <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-          <Button onClick={submit} disabled={createProject.isPending}>
+          <Button onClick={submit} disabled={createProject.isPending || !name || !code}>
             {createProject.isPending ? "Creating..." : "Create Project"}
           </Button>
         </DialogFooter>

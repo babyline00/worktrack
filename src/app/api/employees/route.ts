@@ -10,6 +10,7 @@ export async function GET() {
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
 
   const employees = await db.employee.findMany({
     where: { companyId },
@@ -26,7 +27,9 @@ export async function GET() {
     orderBy: { firstName: "asc" },
   });
 
-  const result = employees.map((e) => {
+  // Build result array with real-time stats (use for...of to allow await)
+  const result = [];
+  for (const e of employees) {
     const todayAtt = e.attendance[0];
     let todaysStatus = "absent";
     if (todayAtt) {
@@ -34,7 +37,29 @@ export async function GET() {
       else if (todayAtt.attendanceStatus === "LATE") todaysStatus = "late";
       else todaysStatus = "working";
     }
-    return {
+
+    // Real monthly stats
+    const [presentCount, lateCount, sumAgg, totalCount] = await Promise.all([
+      db.attendance.count({ where: { employeeId: e.id, attendanceStatus: { in: ["PRESENT", "LATE"] }, attendanceDate: { gte: monthStart } } }),
+      db.attendance.count({ where: { employeeId: e.id, attendanceStatus: "LATE", attendanceDate: { gte: monthStart } } }),
+      db.attendance.aggregate({ where: { employeeId: e.id, attendanceDate: { gte: monthStart } }, _sum: { workingMins: true } }),
+      db.attendance.count({ where: { employeeId: e.id, attendanceDate: { gte: monthStart } } }),
+    ]);
+
+    const totalHours = Math.round((sumAgg._sum.workingMins ?? 0) / 60);
+    const attendanceRate = totalCount > 0 ? Math.round((presentCount / totalCount) * 100) : 0;
+
+    // Use real GPS from latest location, or check-in GPS, or project GPS
+    const latestLoc = todayAtt?.locations?.[0];
+    const coords = latestLoc
+      ? { lat: latestLoc.latitude, lng: latestLoc.longitude }
+      : todayAtt?.checkInLat && todayAtt?.checkInLng
+        ? { lat: todayAtt.checkInLat, lng: todayAtt.checkInLng }
+        : e.assignments[0]?.project
+          ? { lat: e.assignments[0].project.lat ?? 0, lng: e.assignments[0].project.lng ?? 0 }
+          : { lat: 0, lng: 0 };
+
+    result.push({
       id: e.id,
       empId: e.empId,
       firstName: e.firstName,
@@ -50,14 +75,7 @@ export async function GET() {
       projectIds: e.assignments.map((a) => a.projectId),
       project: e.assignments[0]?.project.name ?? "—",
       location: e.assignments[0]?.project.location ?? "—",
-      // Use real GPS from latest location, or check-in GPS, or project GPS as fallback
-      coords: (() => {
-        const latestLoc = todayAtt?.locations?.[0];
-        if (latestLoc) return { lat: latestLoc.latitude, lng: latestLoc.longitude };
-        if (todayAtt?.checkInLat && todayAtt?.checkInLng) return { lat: todayAtt.checkInLat, lng: todayAtt.checkInLng };
-        const proj = e.assignments[0]?.project;
-        return proj ? { lat: proj.lat ?? 0, lng: proj.lng ?? 0 } : { lat: 0, lng: 0 };
-      })(),
+      coords,
       todaysStatus,
       checkIn: todayAtt?.checkIn?.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }),
       checkOut: todayAtt?.checkOut?.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }),
@@ -66,12 +84,13 @@ export async function GET() {
       lastUpdatedSec: todayAtt?.checkIn ? Math.max(5, Math.round((Date.now() - todayAtt.checkIn.getTime()) / 60000) * 60) : 5,
       photoCaptured: !!todayAtt?.checkInPhotoId,
       insideGeofence: todayAtt?.insideGeofence ?? true,
-      presentThisMonth: 22,
-      lateThisMonth: 3,
-      totalHours: 168,
-      attendanceRate: 90,
-    };
-  });
+      // Real-time stats
+      presentThisMonth: presentCount,
+      lateThisMonth: lateCount,
+      totalHours,
+      attendanceRate,
+    });
+  }
 
   return NextResponse.json({ employees: result });
 }
