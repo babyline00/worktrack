@@ -15,13 +15,14 @@ export const runtime = "nodejs";
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireRole(req, ["SUPER_ADMIN", "ADMIN"]);
+    const { id } = await params;
     const body = await req.json().catch(() => ({}));
     const { employeeIds } = body;
     if (!Array.isArray(employeeIds) || employeeIds.length === 0) {
       throw ERRORS.VALIDATION("employeeIds array is required");
     }
 
-    const project = await db.project.findUnique({ where: { id: (await params).id } });
+    const project = await db.project.findUnique({ where: { id } });
     if (!project || project.companyId !== user.companyId) throw ERRORS.NOT_FOUND("Project not found");
 
     // Verify all employees belong to company
@@ -34,9 +35,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const result = await db.$transaction(
       employeeIds.map((empId: string) =>
         db.assignment.upsert({
-          where: { employeeId_projectId: { employeeId: empId, projectId: (await params).id } },
+          where: { employeeId_projectId: { employeeId: empId, projectId: id } },
           update: { status: "ACTIVE", removedAt: null },
-          create: { employeeId: empId, projectId: (await params).id, status: "ACTIVE" },
+          create: { employeeId: empId, projectId: id, status: "ACTIVE" },
         })
       )
     );
@@ -44,7 +45,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     await auditLog({
       action: "EMPLOYEES_ASSIGNED",
       entity: "project",
-      entityId: (await params).id,
+      entityId: id,
       performedById: user.sub,
       companyId: user.companyId,
       newValue: { employeeIds },
