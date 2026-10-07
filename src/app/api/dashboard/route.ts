@@ -11,51 +11,63 @@ export async function GET() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const [totalEmployees, presentRecords, activeEmployees, leaveToday, notifications, projects] = await Promise.all([
-    db.employee.count({ where: { companyId, status: "ACTIVE" } }),
-    db.attendance.findMany({
-      where: { attendanceDate: today, employee: { companyId } },
-      include: { employee: true, project: true },
-    }),
-    db.employee.count({ where: { companyId, status: "ACTIVE" } }),
-    db.leaveRequest.findMany({
-      where: { status: "APPROVED", fromDate: { lte: today }, toDate: { gte: today } },
-      include: { employee: true },
-    }),
-    db.notification.findMany({ orderBy: { createdAt: "desc" }, take: 10 }),
-    db.project.findMany({ where: { companyId }, include: { assignments: true } }),
-  ]);
+  const activeEmployees = await db.employee.count({ where: { companyId, status: "ACTIVE" } });
 
-  const present = presentRecords.filter((a) => a.attendanceStatus === "PRESENT" || a.attendanceStatus === "LATE").length;
-  const workingNow = presentRecords.filter((a) => !a.checkOut).length;
+  // Get today's attendance with employee + project + latest location
+  const presentRecords = await db.attendance.findMany({
+    where: { attendanceDate: today, employee: { companyId, status: "ACTIVE" } },
+    include: {
+      employee: true,
+      project: true,
+      locations: { orderBy: { recordedAt: "desc" }, take: 1 },
+    },
+  });
+
+  const leaveToday = await db.leaveRequest.findMany({
+    where: { status: "APPROVED", fromDate: { lte: today }, toDate: { gte: today }, employee: { companyId } },
+    include: { employee: true },
+  });
+
+  const notifications = await db.notification.findMany({
+    where: { OR: [{ companyId }, { companyId: null }] },
+    orderBy: { createdAt: "desc" },
+    take: 10,
+  });
+
+  const projects = await db.project.findMany({
+    where: { companyId },
+    include: { assignments: { where: { status: "ACTIVE" } } },
+  });
+
+  // KPI calculations
+  const presentEmployeeIds = new Set(
+    presentRecords.filter((a) => a.attendanceStatus === "PRESENT" || a.attendanceStatus === "LATE").map((a) => a.employeeId)
+  );
+  const present = presentEmployeeIds.size;
+  const workingNow = presentRecords.filter((a) => a.sessionStatus === "WORKING").length;
   const late = presentRecords.filter((a) => a.attendanceStatus === "LATE").length;
-  const absent = activeEmployees - present - leaveToday.length;
   const onLeave = leaveToday.length;
+  const absent = Math.max(0, activeEmployees - present - onLeave);
   const presentPct = activeEmployees > 0 ? Math.round((present / activeEmployees) * 1000) / 10 : 0;
 
   const donut = [
-    { name: "Present", value: present, color: "#16a34a" },
+    { name: "Present", value: present - late > 0 ? present - late : 0, color: "#16a34a" },
     { name: "Late", value: late, color: "#f59e0b" },
     { name: "On Leave", value: onLeave, color: "#0ea5e9" },
-    { name: "Absent", value: Math.max(0, absent), color: "#dc2626" },
+    { name: "Absent", value: absent, color: "#dc2626" },
   ];
 
-  // Attendance trend (last 7 days)
-  const trend = [];
+  // Attendance trend
+  const trend: { label: string; value: number }[] = [];
   for (let i = 6; i >= 0; i--) {
     const d = new Date(today);
     d.setDate(d.getDate() - i);
     const dayRecords = await db.attendance.count({
-      where: {
-        attendanceDate: d,
-        employee: { companyId },
-        attendanceStatus: { in: ["PRESENT", "LATE"] },
-      },
+      where: { attendanceDate: d, employee: { companyId, status: "ACTIVE" }, attendanceStatus: { in: ["PRESENT", "LATE"] } },
     });
-    const totalActive = activeEmployees || 1;
     trend.push({
       label: d.toLocaleDateString("en-US", { weekday: "short" }),
-      value: Math.round((dayRecords / totalActive) * 100),
+      value: activeEmployees > 0 ? Math.round((dayRecords / activeEmployees) * 100) : 0,
     });
   }
 
@@ -63,91 +75,86 @@ export async function GET() {
   const projectPerf = await Promise.all(
     projects.map(async (p) => {
       const presentToday = await db.attendance.count({
-        where: {
-          attendanceDate: today,
-          projectId: p.id,
-          attendanceStatus: { in: ["PRESENT", "LATE"] },
-        },
+        where: { attendanceDate: today, projectId: p.id, attendanceStatus: { in: ["PRESENT", "LATE"] }, employee: { status: "ACTIVE" } },
       });
-      return {
-        id: p.id,
-        name: p.name,
-        present: presentToday,
-        total: p.assignments.length,
-        pct: p.assignments.length > 0 ? Math.round((presentToday / p.assignments.length) * 100) : 0,
-      };
+      const total = p.assignments.length;
+      return { id: p.id, name: p.name, present: presentToday, total, pct: total > 0 ? Math.round((presentToday / total) * 100) : 0 };
     })
   );
 
-  // Live attendance (currently working)
+  // Live attendance with REAL GPS coordinates from latest location
   const liveAttendance = presentRecords
-    .filter((a) => !a.checkOut)
-    .slice(0, 6)
-    .map((a) => ({
-      id: a.id,
-      employeeId: a.employee.empId,
-      employeeName: `${a.employee.firstName} ${a.employee.lastName}`,
-      employeeInitials: (a.employee.firstName[0] ?? "") + (a.employee.lastName[0] ?? ""),
-      avatarColor: a.employee.avatarColor,
-      project: a.project?.name ?? "—",
-      checkIn: a.checkIn?.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }) ?? "—",
-      status: "working",
-      location: a.checkInLocation ?? "—",
-      lastUpdatedSec: a.checkIn ? Math.max(5, Math.round((Date.now() - a.checkIn.getTime()) / 60000) * 60) : 5,
-    }));
+    .filter((a) => a.sessionStatus === "WORKING")
+    .slice(0, 10)
+    .map((a) => {
+      const latestLoc = a.locations[0];
+      // Use latest location if available, otherwise fall back to check-in GPS
+      const lat = latestLoc?.latitude ?? a.checkInLat ?? 0;
+      const lng = latestLoc?.longitude ?? a.checkInLng ?? 0;
+      return {
+        id: a.id,
+        attendanceId: a.id,
+        employeeId: a.employee.empId,
+        employeeName: `${a.employee.firstName} ${a.employee.lastName}`,
+        employeeInitials: (a.employee.firstName[0] ?? "") + (a.employee.lastName[0] ?? ""),
+        avatarColor: a.employee.avatarColor,
+        projectId: a.projectId,
+        projectName: a.project?.name ?? "—",
+        projectCoords: a.project ? { lat: a.project.lat, lng: a.project.lng } : null,
+        projectRadius: a.project?.radiusM ?? 200,
+        checkIn: a.checkIn?.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }) ?? "—",
+        status: "working",
+        location: a.checkInLocation ?? "—",
+        // REAL GPS coordinates
+        coords: { lat, lng },
+        accuracy: latestLoc?.accuracy ?? a.checkInAccuracy ?? 0,
+        insideGeofence: latestLoc?.insideGeofence ?? a.insideGeofence,
+        distanceFromProject: latestLoc?.distanceFromProject ?? a.distanceFromProject ?? 0,
+        lastUpdatedSec: latestLoc
+          ? Math.max(5, Math.round((Date.now() - latestLoc.recordedAt.getTime()) / 60000) * 60)
+          : a.checkIn ? Math.max(5, Math.round((Date.now() - a.checkIn.getTime()) / 60000) * 60) : 5,
+        lastLocationTime: latestLoc?.recordedAt?.toISOString() ?? a.checkIn?.toISOString() ?? null,
+        // For the employee table view
+        project: a.project?.name ?? "—",
+        workingTimeMins: a.workingMins,
+      };
+    });
 
   // Alerts
-  const alerts = [];
-  const lateAlerts = presentRecords.filter((a) => a.attendanceStatus === "LATE").slice(0, 1);
+  const alerts: any[] = [];
+  const lateAlerts = presentRecords.filter((a) => a.attendanceStatus === "LATE").slice(0, 3);
   for (const a of lateAlerts) {
     alerts.push({
       id: `al-late-${a.id}`,
       severity: "warning",
-      title: `${a.employee.firstName} checked in late`,
-      description: `${a.project?.name ?? "—"} • ${a.checkIn?.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}`,
+      title: `${a.employee.firstName} checked in ${a.lateMins} min late`,
+      description: `${a.project?.name ?? "—"} • ${a.checkIn?.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }) ?? "—"}`,
       employee: a.employee.firstName,
     });
   }
-  const notCheckedOut = presentRecords.filter((a) => !a.checkOut && a.attendanceStatus === "PRESENT").length;
-  if (notCheckedOut > 0) {
-    alerts.push({
-      id: "al-no-checkout",
-      severity: "warning",
-      title: `${notCheckedOut} employees haven't checked out`,
-      description: "Shift ended — checkout pending",
-    });
+
+  const stillWorking = presentRecords.filter((a) => a.sessionStatus === "WORKING");
+  if (stillWorking.length > 0) {
+    const lateHour = new Date(today);
+    lateHour.setHours(18, 0, 0, 0);
+    if (new Date() > lateHour) {
+      alerts.push({ id: "al-no-checkout", severity: "warning", title: `${stillWorking.length} employees haven't checked out`, description: "Shift ended at 6:00 PM — checkout pending" });
+    }
   }
-  const outsideGeofence = presentRecords.filter((a) => !a.insideGeofence);
+
+  const outsideGeofence = presentRecords.filter((a) => !a.insideGeofence && a.sessionStatus === "WORKING");
   if (outsideGeofence.length > 0) {
     const first = outsideGeofence[0];
-    alerts.push({
-      id: `al-geofence-${first.id}`,
-      severity: "danger",
-      title: `${first.employee.firstName} is outside project geofence`,
-      description: `Currently outside ${first.project?.name ?? "—"} site`,
-      employee: first.employee.firstName,
-    });
+    alerts.push({ id: `al-geofence-${first.id}`, severity: "danger", title: `${first.employee.firstName} is outside project geofence`, description: `Currently ${first.distanceFromProject}m away from ${first.project?.name ?? "project"}`, employee: first.employee.firstName });
   }
-  const missingPhotos = presentRecords.filter((a) => !a.checkInPhoto);
+
+  const missingPhotos = presentRecords.filter((a) => !a.checkInPhotoId);
   if (missingPhotos.length > 0) {
-    alerts.push({
-      id: "al-missing-photos",
-      severity: "warning",
-      title: `${missingPhotos.length} employees have missing attendance photos`,
-      description: "Photo verification required at check-in",
-    });
+    alerts.push({ id: "al-missing-photos", severity: "warning", title: `${missingPhotos.length} employees have missing attendance photos`, description: "Photo verification required at check-in" });
   }
 
   return NextResponse.json({
-    kpis: {
-      totalEmployees,
-      present,
-      workingNow,
-      absent: Math.max(0, absent),
-      late,
-      leave: onLeave,
-      presentPct,
-    },
+    kpis: { totalEmployees: activeEmployees, present, workingNow, absent, late, leave: onLeave, presentPct },
     donut,
     trend,
     projectPerformance: projectPerf,

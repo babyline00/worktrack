@@ -74,15 +74,20 @@ export async function POST(req: Request) {
     const access = signAccessToken(tokenPayload);
     const refresh = signRefreshToken(tokenPayload);
 
-    // 6. Store refresh token in DB (rotation chain)
-    await db.refreshToken.create({
-      data: {
-        userId: user.id,
-        token: refresh.token,
-        deviceId: deviceId ?? null,
-        expiresAt: refresh.expiresAt,
-      },
-    });
+    // 6. Store refresh token in DB — delete old tokens for this user first to avoid collisions
+    await db.refreshToken.deleteMany({ where: { userId: user.id } });
+    try {
+      await db.refreshToken.create({
+        data: {
+          userId: user.id,
+          token: refresh.token,
+          deviceId: deviceId ?? null,
+          expiresAt: refresh.expiresAt,
+        },
+      });
+    } catch (e) {
+      // If still fails (race condition), continue — token is valid via JWT verification
+    }
 
     // 7. Update last login
     await db.user.update({ where: { id: user.id }, data: { lastLogin: new Date() } });

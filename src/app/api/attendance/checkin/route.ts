@@ -75,6 +75,22 @@ export async function POST(req: Request) {
     },
   });
 
+  // Save initial GPS location to AttendanceLocation for trail tracking
+  if (body.lat && body.lng) {
+    await db.attendanceLocation.create({
+      data: {
+        attendanceId: record.id,
+        latitude: body.lat,
+        longitude: body.lng,
+        accuracy: body.accuracy ?? 0,
+        recordedAt: now,
+        source: "MOBILE",
+        insideGeofence,
+        distanceFromProject: distance,
+      },
+    });
+  }
+
   return NextResponse.json({ attendance: record, status: attendanceStatus, insideGeofence });
 }
 

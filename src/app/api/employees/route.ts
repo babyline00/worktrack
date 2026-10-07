@@ -20,6 +20,7 @@ export async function GET() {
         where: { attendanceDate: today },
         take: 1,
         orderBy: { attendanceDate: "desc" },
+        include: { locations: { orderBy: { recordedAt: "desc" }, take: 1 } },
       },
     },
     orderBy: { firstName: "asc" },
@@ -49,9 +50,14 @@ export async function GET() {
       projectIds: e.assignments.map((a) => a.projectId),
       project: e.assignments[0]?.project.name ?? "—",
       location: e.assignments[0]?.project.location ?? "—",
-      coords: e.assignments[0]?.project
-        ? { lat: e.assignments[0].project.lat ?? 0, lng: e.assignments[0].project.lng ?? 0 }
-        : { lat: 0, lng: 0 },
+      // Use real GPS from latest location, or check-in GPS, or project GPS as fallback
+      coords: (() => {
+        const latestLoc = todayAtt?.locations?.[0];
+        if (latestLoc) return { lat: latestLoc.latitude, lng: latestLoc.longitude };
+        if (todayAtt?.checkInLat && todayAtt?.checkInLng) return { lat: todayAtt.checkInLat, lng: todayAtt.checkInLng };
+        const proj = e.assignments[0]?.project;
+        return proj ? { lat: proj.lat ?? 0, lng: proj.lng ?? 0 } : { lat: 0, lng: 0 };
+      })(),
       todaysStatus,
       checkIn: todayAtt?.checkIn?.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }),
       checkOut: todayAtt?.checkOut?.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }),

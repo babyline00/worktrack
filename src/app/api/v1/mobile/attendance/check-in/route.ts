@@ -12,7 +12,7 @@ import {
   nowInTimezone,
   formatTimeInTimezone,
 } from "@/lib/v1";
-import { emitCheckin } from "@/lib/realtime";
+import { emitCheckin } from "@/lib/realtime-server";
 import { writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
 import crypto from "crypto";
@@ -195,6 +195,9 @@ export async function POST(req: Request) {
         distanceFromProject: distance,
       },
     });
+
+    // Broadcast via WebSocket for admin dashboard real-time update
+    emitCheckin({ employeeId: employee.id, employeeName: `${employee.firstName} ${employee.lastName}` });
 
     // Update device last seen
     if (deviceId) {

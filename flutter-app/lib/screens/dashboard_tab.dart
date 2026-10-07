@@ -1,4 +1,4 @@
-// Dashboard tab — today's status, check-in/out, quick stats, recent attendance
+// Dashboard tab — matches Stitch design with blue header, profile card, status section, verification checklist
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -19,6 +19,7 @@ class DashboardTab extends StatefulWidget {
 class _DashboardTabState extends State<DashboardTab> {
   Timer? _timer;
   int _elapsedSeconds = 0;
+  Timer? _locationTimer;
 
   @override
   void initState() {
@@ -35,12 +36,35 @@ class _DashboardTabState extends State<DashboardTab> {
       _timer = Timer.periodic(const Duration(seconds: 1), (t) {
         setState(() => _elapsedSeconds++);
       });
+      // Send location updates every 2 min
+      if (att.attendanceId != null) {
+        _locationTimer?.cancel();
+        _locationTimer = Timer.periodic(const Duration(minutes: 2), (_) {
+          context.read<AttendanceProvider>().sendLocationUpdate(att.attendanceId!);
+        });
+      }
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Re-check timer when data refreshes
+    final att = context.read<AttendanceProvider>().todayAttendance;
+    if (att?.sessionStatus == 'WORKING' && _timer == null) {
+      _startTimer();
+    } else if (att?.sessionStatus != 'WORKING') {
+      _timer?.cancel();
+      _timer = null;
+      _locationTimer?.cancel();
+      _locationTimer = null;
     }
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    _locationTimer?.cancel();
     super.dispose();
   }
 
@@ -48,7 +72,27 @@ class _DashboardTabState extends State<DashboardTab> {
     final h = seconds ~/ 3600;
     final m = (seconds % 3600) ~/ 60;
     final s = seconds % 60;
-    return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+    return '${h.toString().padLeft(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}';
+  }
+
+  String _formatMins(int mins) {
+    final h = mins ~/ 60;
+    final m = mins % 60;
+    return '${h}h ${m.toString().padStart(2, '0')}m';
+  }
+
+  String _formatDate(DateTime date) {
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    return '${days[date.weekday - 1]}, ${months[date.month - 1]} ${date.day}, ${date.year}';
+  }
+
+  String _formatTime(String? iso) {
+    if (iso == null) return '---';
+    try {
+      final dt = DateTime.parse(iso);
+      return '${dt.hour > 12 ? dt.hour - 12 : dt.hour == 0 ? 12 : dt.hour}:${dt.minute.toString().padStart(2, '0')} ${dt.hour >= 12 ? 'PM' : 'AM'}';
+    } catch (_) { return '---'; }
   }
 
   @override
@@ -59,265 +103,194 @@ class _DashboardTabState extends State<DashboardTab> {
     final today = att.todayAttendance;
     final isWorking = today != null && today.sessionStatus == 'WORKING';
     final isCheckedOut = today != null && today.sessionStatus == 'COMPLETED';
+    final isNotStarted = today == null || today.sessionStatus == 'NOT_STARTED';
 
     return Scaffold(
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(dashboard?.employeeName ?? 'Hello', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            Text(_formatDate(DateTime.now()), style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-          ],
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications_outlined),
-            onPressed: () => Navigator.pushNamed(context, '/notifications'),
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () => att.loadDashboard(),
-          ),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: () => att.loadDashboard(),
-        child: att.isLoading && dashboard == null
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                // Status card
-                _StatusCard(
-                  isWorking: isWorking,
-                  isCheckedOut: isCheckedOut,
-                  projectName: today?.projectName,
-                  checkInTime: today?.checkIn,
-                  checkOutTime: today?.checkOut,
-                  workingMinutes: today?.workingMinutes ?? 0,
-                  elapsedSeconds: _elapsedSeconds,
-                  insideGeofence: today?.insideGeofence ?? true,
+      body: Container(
+        color: AppColors.background,
+        child: CustomScrollView(
+          slivers: [
+            // Blue header
+            SliverAppBar(
+              expandedHeight: 120,
+              pinned: false,
+              flexibleSpace: Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFF3B82F6), AppColors.primary],
+                  ),
                 ),
-                const SizedBox(height: 16),
-
-                // Action button
-                if (!isWorking && !isCheckedOut)
-                  ElevatedButton.icon(
-                    onPressed: att.dashboard!.projects.isNotEmpty
-                      ? () => Navigator.push(context, MaterialPageRoute(
-                          builder: (_) => ProjectSelectionScreen(projects: att.dashboard!.projects),
-                        ))
-                      : null,
-                    icon: const Icon(Icons.login),
-                    label: const Text('CHECK IN'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.success,
-                      minimumSize: const Size(double.infinity, 56),
-                      textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                  )
-                else if (isWorking)
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      if (today?.attendanceId != null) {
-                        Navigator.push(context, MaterialPageRoute(
-                          builder: (_) => WorkingSessionScreen(attendanceId: today!.attendanceId!),
-                        ));
-                      }
-                    },
-                    icon: const Icon(Icons.logout),
-                    label: const Text('CHECK OUT'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.danger,
-                      minimumSize: const Size(double.infinity, 56),
-                      textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                  )
-                else if (isCheckedOut)
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: AppColors.successSoft,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                child: SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Icon(Icons.check_circle, color: AppColors.success, size: 24),
-                        SizedBox(width: 8),
-                        Text('Your day is complete!', style: TextStyle(color: AppColors.success, fontWeight: FontWeight.w600)),
+                        const Text('WorkTrack', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+                        IconButton(
+                          icon: const Icon(Icons.notifications_outlined, color: Colors.white),
+                          onPressed: () {},
+                        ),
                       ],
                     ),
                   ),
-
-                const SizedBox(height: 24),
-
-                // Quick stats
-                Row(
-                  children: [
-                    _StatCard(label: 'This Month', value: '22', subtitle: 'Present', color: AppColors.success),
-                    const SizedBox(width: 12),
-                    _StatCard(label: 'Late', value: '3', subtitle: 'Times', color: AppColors.warning),
-                    const SizedBox(width: 12),
-                    _StatCard(label: 'Rate', value: '92%', subtitle: 'Attendance', color: AppColors.info),
-                  ],
                 ),
-                const SizedBox(height: 24),
-
-                // Assigned project
-                if (dashboard!.projects.isNotEmpty) ...[
-                  const Text('Assigned Project', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
-                  const SizedBox(height: 8),
-                  ...dashboard.projects.map((p) => _ProjectCard(project: p)),
-                ],
-
-                const SizedBox(height: 24),
-
-                // Recent attendance
-                if (dashboard.recentAttendance.isNotEmpty) ...[
-                  const Text('Recent Attendance', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
-                  const SizedBox(height: 8),
-                  ...dashboard.recentAttendance.map((a) => _RecentAttendanceCard(item: a)),
-                ],
-              ],
+              ),
             ),
-      ),
-    );
-  }
 
-  String _formatDate(DateTime date) {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    return '${days[date.weekday - 1]}, ${months[date.month - 1]} ${date.day}, ${date.year}';
-  }
-}
+            // Content
+            SliverToBoxAdapter(
+              child: att.isLoading && dashboard == null
+                ? const SizedBox(height: 300, child: Center(child: CircularProgressIndicator()))
+                : Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Column(
+                      children: [
+                        const SizedBox(height: 8),
 
-class _StatusCard extends StatelessWidget {
-  final bool isWorking;
-  final bool isCheckedOut;
-  final String? projectName;
-  final String? checkInTime;
-  final String? checkOutTime;
-  final int workingMinutes;
-  final int elapsedSeconds;
-  final bool insideGeofence;
+                        // Profile card
+                        _ProfileCard(
+                          name: dashboard?.employeeName ?? auth.user?.name ?? 'User',
+                          empId: dashboard?.employeeId ?? auth.user?.employeeId ?? '---',
+                          designation: dashboard?.designation ?? '',
+                        ),
+                        const SizedBox(height: 16),
 
-  const _StatusCard({
-    required this.isWorking,
-    required this.isCheckedOut,
-    this.projectName,
-    this.checkInTime,
-    this.checkOutTime,
-    required this.workingMinutes,
-    required this.elapsedSeconds,
-    required this.insideGeofence,
-  });
+                        // Current project card
+                        if (dashboard != null && dashboard.projects.isNotEmpty)
+                          _ProjectCard(project: dashboard.projects.first),
+                        const SizedBox(height: 16),
 
-  @override
-  Widget build(BuildContext context) {
-    final status = isWorking ? 'WORKING' : isCheckedOut ? 'COMPLETED' : 'NOT CHECKED IN';
-    final statusColor = isWorking ? AppColors.success : isCheckedOut ? AppColors.textSecondary : AppColors.warning;
-    final statusBg = isWorking ? AppColors.successSoft : isCheckedOut ? Color(0xFFF1F5F9) : AppColors.warningSoft;
+                        // Status section
+                        _StatusSection(
+                          isNotStarted: isNotStarted,
+                          isWorking: isWorking,
+                          isCheckedOut: isCheckedOut,
+                          elapsedSeconds: _elapsedSeconds,
+                          workingMinutes: today?.workingMinutes ?? 0,
+                        ),
+                        const SizedBox(height: 20),
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                if (isWorking)
-                  Container(
-                    width: 10, height: 10,
-                    margin: const EdgeInsets.only(right: 8),
-                    decoration: BoxDecoration(color: AppColors.success, shape: BoxShape.circle),
+                        // Action button
+                        if (isNotStarted && dashboard != null && dashboard.projects.isNotEmpty)
+                          _ActionButton(
+                            text: 'CHECK IN',
+                            color: AppColors.success,
+                            icon: Icons.play_arrow,
+                            onPressed: () => Navigator.push(context, MaterialPageRoute(
+                              builder: (_) => ProjectSelectionScreen(projects: dashboard.projects),
+                            )),
+                          )
+                        else if (isWorking && today?.attendanceId != null)
+                          _ActionButton(
+                            text: 'CHECK OUT',
+                            color: AppColors.danger,
+                            icon: Icons.stop,
+                            onPressed: () => Navigator.push(context, MaterialPageRoute(
+                              builder: (_) => WorkingSessionScreen(attendanceId: today!.attendanceId!),
+                            )),
+                          )
+                        else if (isCheckedOut)
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(color: AppColors.successSoft, borderRadius: BorderRadius.circular(12)),
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.check_circle, color: AppColors.success, size: 24),
+                                SizedBox(width: 8),
+                                Text('Your day is complete!', style: TextStyle(color: AppColors.success, fontWeight: FontWeight.w600)),
+                              ],
+                            ),
+                          ),
+
+                        const SizedBox(height: 24),
+
+                        // Today's Details
+                        _DetailsSection(
+                          checkIn: _formatTime(today?.checkInAt),
+                          checkOut: _formatTime(today?.checkOutAt),
+                          workingHours: isWorking ? _formatDuration(_elapsedSeconds) : _formatMins(today?.workingMinutes ?? 0),
+                        ),
+                        const SizedBox(height: 20),
+
+                        // Verification section
+                        _VerificationSection(
+                          isNotStarted: isNotStarted,
+                          isWorking: isWorking,
+                          isCheckedOut: isCheckedOut,
+                          checkInTime: _formatTime(today?.checkInAt),
+                          checkOutTime: _formatTime(today?.checkOutAt),
+                          insideGeofence: today?.insideGeofence ?? true,
+                        ),
+                        const SizedBox(height: 20),
+
+                        // Geofence indicator
+                        if (today != null)
+                          _GeofenceIndicator(insideGeofence: today.insideGeofence),
+                        const SizedBox(height: 32),
+                      ],
+                    ),
                   ),
-                Text(status, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: statusColor, letterSpacing: 1)),
-              ],
-            ),
-            const SizedBox(height: 12),
-            if (isWorking)
-              Text(_formatElapsed(elapsedSeconds), style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: AppColors.textPrimary))
-            else if (isCheckedOut)
-              Text('${(workingMinutes / 60).toStringAsFixed(1)}h', style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: AppColors.textPrimary))
-            else
-              const Text('0h 00m', style: TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: AppColors.textMuted)),
-            const SizedBox(height: 12),
-            if (projectName != null)
-              Text(projectName!, style: const TextStyle(fontSize: 14, color: AppColors.textSecondary)),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                _TimeInfo(label: 'Check In', time: checkInTime ?? '—'),
-                Container(width: 1, height: 30, color: AppColors.border),
-                _TimeInfo(label: 'Check Out', time: checkOutTime ?? '—'),
-                Container(width: 1, height: 30, color: AppColors.border),
-                _TimeInfo(label: 'Geofence', time: insideGeofence ? 'Inside' : 'Outside', color: insideGeofence ? AppColors.success : AppColors.danger),
-              ],
             ),
           ],
         ),
       ),
     );
   }
-
-  String _formatElapsed(int seconds) {
-    final h = seconds ~/ 3600;
-    final m = (seconds % 3600) ~/ 60;
-    final s = seconds % 60;
-    return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}:${s.toString().padStart(2, '0')}';
-  }
 }
 
-class _TimeInfo extends StatelessWidget {
-  final String label;
-  final String time;
-  final Color? color;
+// ============================================================
+// Profile card — avatar + name + ID + designation
+// ============================================================
+class _ProfileCard extends StatelessWidget {
+  final String name;
+  final String empId;
+  final String designation;
 
-  const _TimeInfo({required this.label, required this.time, this.color});
+  const _ProfileCard({required this.name, required this.empId, required this.designation});
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Text(label, style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
-        const SizedBox(height: 4),
-        Text(time, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: color ?? AppColors.textPrimary)),
-      ],
-    );
-  }
-}
-
-class _StatCard extends StatelessWidget {
-  final String label;
-  final String value;
-  final String subtitle;
-  final Color color;
-
-  const _StatCard({required this.label, required this.value, required this.subtitle, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            children: [
-              Text(value, style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: color)),
-              const SizedBox(height: 4),
-              Text(label, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-              Text(subtitle, style: const TextStyle(fontSize: 10, color: AppColors.textMuted)),
-            ],
-          ),
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 30,
+              backgroundColor: AppColors.primary,
+              child: Text(
+                name.isNotEmpty ? name[0].toUpperCase() : '?',
+                style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Good Morning,', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                  Text(name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                  const SizedBox(height: 2),
+                  Text('ID: $empId', style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                  if (designation.isNotEmpty)
+                    Text(designation, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
+// ============================================================
+// Project card — building icon + project name + location
+// ============================================================
 class _ProjectCard extends StatelessWidget {
   final Project project;
 
@@ -327,36 +300,333 @@ class _ProjectCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         leading: Container(
           width: 40, height: 40,
           decoration: BoxDecoration(color: AppColors.primary.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
-          child: const Icon(Icons.location_on, color: AppColors.primary, size: 20),
+          child: const Icon(Icons.business_outlined, color: AppColors.primary, size: 20),
         ),
-        title: Text(project.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-        subtitle: Text('${project.code} • ${project.location ?? "—"}', style: const TextStyle(fontSize: 12)),
-        trailing: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(color: AppColors.successSoft, borderRadius: BorderRadius.circular(12)),
-          child: Text(project.status, style: const TextStyle(fontSize: 10, color: AppColors.success, fontWeight: FontWeight.w600)),
+        title: const Text('Current Project', style: TextStyle(fontSize: 11, color: AppColors.textSecondary, fontWeight: FontWeight.w500)),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(project.name, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+            Text(project.location ?? '—', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+          ],
+        ),
+        trailing: const Icon(Icons.chevron_right, color: AppColors.textMuted),
+      ),
+    );
+  }
+}
+
+// ============================================================
+// Status section — gray/green/red state
+// ============================================================
+class _StatusSection extends StatelessWidget {
+  final bool isNotStarted;
+  final bool isWorking;
+  final bool isCheckedOut;
+  final int elapsedSeconds;
+  final int workingMinutes;
+
+  const _StatusSection({
+    required this.isNotStarted,
+    required this.isWorking,
+    required this.isCheckedOut,
+    required this.elapsedSeconds,
+    required this.workingMinutes,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final Color bgColor;
+    final String statusText;
+    final Color statusColor;
+    final String timeText;
+    final String timeLabel;
+    final IconData icon;
+
+    if (isWorking) {
+      bgColor = AppColors.successSoft;
+      statusText = 'Working Now';
+      statusColor = AppColors.success;
+      timeText = _format(elapsedSeconds);
+      timeLabel = 'Working Time';
+      icon = Icons.circle;
+    } else if (isCheckedOut) {
+      bgColor = AppColors.successSoft;
+      statusText = 'Checked Out';
+      statusColor = AppColors.success;
+      timeText = _formatMins(workingMinutes);
+      timeLabel = 'Total Time';
+      icon = Icons.check_circle;
+    } else {
+      bgColor = const Color(0xFFF1F5F9);
+      statusText = 'Not Checked In';
+      statusColor = AppColors.textSecondary;
+      timeText = '00:00:00';
+      timeLabel = 'Working Time';
+      icon = Icons.access_time;
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, size: 40, color: statusColor),
+          const SizedBox(height: 12),
+          Text(statusText, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: statusColor)),
+          const SizedBox(height: 8),
+          Text(timeText, style: TextStyle(
+            fontSize: 36,
+            fontWeight: FontWeight.bold,
+            color: isNotStarted ? AppColors.textMuted : AppColors.textPrimary,
+            fontFamily: 'monospace',
+            letterSpacing: 2,
+          )),
+          const SizedBox(height: 4),
+          Text(timeLabel, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+        ],
+      ),
+    );
+  }
+
+  String _format(int seconds) {
+    final h = seconds ~/ 3600;
+    final m = (seconds % 3600) ~/ 60;
+    final s = seconds % 60;
+    return '${h.toString().padLeft(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}';
+  }
+
+  String _formatMins(int mins) {
+    final h = mins ~/ 60;
+    final m = mins % 60;
+    return '${h}h ${m.toString().padStart(2, '0')}m';
+  }
+}
+
+// ============================================================
+// Action button — large full-width
+// ============================================================
+class _ActionButton extends StatelessWidget {
+  final String text;
+  final Color color;
+  final IconData icon;
+  final VoidCallback onPressed;
+
+  const _ActionButton({required this.text, required this.color, required this.icon, required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      height: 56,
+      child: ElevatedButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 24),
+        label: Text(text, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1)),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: color,
+          foregroundColor: Colors.white,
+          elevation: 2,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
       ),
     );
   }
 }
 
-class _RecentAttendanceCard extends StatelessWidget {
-  final AttendanceHistoryItem item;
+// ============================================================
+// Today's Details section
+// ============================================================
+class _DetailsSection extends StatelessWidget {
+  final String checkIn;
+  final String checkOut;
+  final String workingHours;
 
-  const _RecentAttendanceCard({required this.item});
+  const _DetailsSection({required this.checkIn, required this.checkOut, required this.workingHours});
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: ListTile(
-        leading: const CircleAvatar(backgroundColor: AppColors.primary, child: Icon(Icons.access_time, color: Colors.white, size: 18)),
-        title: Text(item.date, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-        subtitle: Text('${item.project} • ${item.checkIn ?? "—"} → ${item.checkOut ?? "—"}', style: const TextStyle(fontSize: 12)),
-        trailing: Text('${(item.workingMinutes / 60).toStringAsFixed(1)}h', style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text("Today's Details", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+        const SizedBox(height: 12),
+        Card(
+          child: Column(
+            children: [
+              _DetailRow(icon: Icons.radio_button_checked, iconColor: AppColors.success, label: 'Check-In', value: checkIn),
+              const Divider(height: 1, indent: 56),
+              _DetailRow(icon: Icons.radio_button_checked, iconColor: AppColors.danger, label: 'Check-Out', value: checkOut),
+              const Divider(height: 1, indent: 56),
+              _DetailRow(icon: Icons.access_time, iconColor: AppColors.primary, label: 'Working Hours', value: workingHours),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _DetailRow extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final String label;
+  final String value;
+
+  const _DetailRow({required this.icon, required this.iconColor, required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Row(
+        children: [
+          Icon(icon, color: iconColor, size: 20),
+          const SizedBox(width: 16),
+          Expanded(child: Text(label, style: const TextStyle(fontSize: 14, color: AppColors.textPrimary))),
+          Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================
+// Verification section — photo, GPS, device, time
+// ============================================================
+class _VerificationSection extends StatelessWidget {
+  final bool isNotStarted;
+  final bool isWorking;
+  final bool isCheckedOut;
+  final String checkInTime;
+  final String checkOutTime;
+  final bool insideGeofence;
+
+  const _VerificationSection({
+    required this.isNotStarted,
+    required this.isWorking,
+    required this.isCheckedOut,
+    required this.checkInTime,
+    required this.checkOutTime,
+    required this.insideGeofence,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Verification', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+        const SizedBox(height: 4),
+        const Text('(Will be captured)', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+        const SizedBox(height: 12),
+        Card(
+          child: Column(
+            children: [
+              _VerifyRow(icon: Icons.camera_alt_outlined, label: 'Photo', status: _status(), isVerified: isWorking || isCheckedOut),
+              const Divider(height: 1, indent: 56),
+              _VerifyRow(icon: Icons.location_on_outlined, label: 'GPS Location', status: _status(), isVerified: isWorking || isCheckedOut),
+              const Divider(height: 1, indent: 56),
+              _VerifyRow(icon: Icons.phone_android_outlined, label: 'Device Info', status: _status(), isVerified: isWorking || isCheckedOut),
+              const Divider(height: 1, indent: 56),
+              _VerifyRow(icon: Icons.access_time, label: 'Capture Time', status: checkInTime, isVerified: false),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _status() {
+    if (isCheckedOut) return 'Verified';
+    if (isWorking) return 'Captured';
+    return 'Pending';
+  }
+}
+
+class _VerifyRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String status;
+  final bool isVerified;
+
+  const _VerifyRow({required this.icon, required this.label, required this.status, required this.isVerified});
+
+  @override
+  Widget build(BuildContext context) {
+    final statusColor = isVerified ? AppColors.success : AppColors.textMuted;
+    final statusBg = isVerified ? AppColors.successSoft : const Color(0xFFF1F5F9);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        children: [
+          Icon(icon, color: AppColors.textSecondary, size: 20),
+          const SizedBox(width: 16),
+          Expanded(child: Text(label, style: const TextStyle(fontSize: 14, color: AppColors.textPrimary))),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(color: statusBg, borderRadius: BorderRadius.circular(12)),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (isVerified) Icon(Icons.check, size: 12, color: statusColor),
+                if (isVerified) const SizedBox(width: 4),
+                Text(status, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: statusColor)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================
+// Geofence indicator
+// ============================================================
+class _GeofenceIndicator extends StatelessWidget {
+  final bool insideGeofence;
+
+  const _GeofenceIndicator({required this.insideGeofence});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: insideGeofence ? AppColors.successSoft : AppColors.dangerSoft,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: insideGeofence ? AppColors.success.withOpacity(0.3) : AppColors.danger.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.location_on, color: insideGeofence ? AppColors.success : AppColors.danger, size: 20),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  insideGeofence ? 'Inside Project Area' : 'Outside Project Area',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: insideGeofence ? AppColors.success : AppColors.danger),
+                ),
+                Text(
+                  insideGeofence ? 'You are within the allowed geofence radius' : 'Please move to the project area',
+                  style: TextStyle(fontSize: 11, color: insideGeofence ? AppColors.success : AppColors.danger),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

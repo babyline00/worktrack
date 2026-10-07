@@ -5,7 +5,7 @@ import { io, Socket } from "socket.io-client";
 
 let socket: Socket | null = null;
 
-export function getSocket(): Socket | null {
+function getSocket(): Socket | null {
   if (typeof window === "undefined") return null;
   if (!socket) {
     socket = io("/?XTransformPort=3003", {
@@ -38,7 +38,6 @@ export function useRealtimeUpdates(channel: string, onUpdate: (data: any) => voi
     s.on("live-update", onUpdate);
 
     if (s.connected) {
-      // Defer to avoid setState in effect body
       Promise.resolve().then(() => setConnected(true));
       s.emit("subscribe", channel);
     }

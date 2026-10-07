@@ -12,7 +12,7 @@ import {
   formatTimeInTimezone,
   formatMins,
 } from "@/lib/v1";
-import { emitCheckout } from "@/lib/realtime";
+import { emitCheckout } from "@/lib/realtime-server";
 import { writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
 import crypto from "crypto";

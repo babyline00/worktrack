@@ -51,7 +51,7 @@ export function signAccessToken(payload: Omit<JwtPayload, "type" | "iat" | "exp"
     type: "access",
     iat: now,
     exp: now + ACCESS_TOKEN_TTL,
-    jti: crypto.randomUUID(),
+    jti: `${now}-${Math.random().toString(36).slice(2)}-${Date.now()}`,
   };
   const header = base64UrlEncode({ alg: "HS256", typ: "JWT" });
   const body = base64UrlEncode(fullPayload);
@@ -66,7 +66,7 @@ export function signRefreshToken(payload: Omit<JwtPayload, "type" | "iat" | "exp
     type: "refresh",
     iat: now,
     exp: now + REFRESH_TOKEN_TTL,
-    jti: crypto.randomUUID(),
+    jti: `${now}-${Math.random().toString(36).slice(2)}-${Date.now()}-${payload.sub}`,
   };
   const header = base64UrlEncode({ alg: "HS256", typ: "JWT" });
   const body = base64UrlEncode(fullPayload);
