@@ -52,3 +52,10 @@ prompt
 server.log
 # Skills directory
 /skills/
+# Flutter
+/flutter-app/build/
+/flutter-app/.dart_tool/
+/flutter-app/.flutter-plugins
+/flutter-app/.flutter-plugins-dependencies
+/flutter-app/.packages
+/flutter-app/pubspec.lock
