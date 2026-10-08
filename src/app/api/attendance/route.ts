@@ -19,9 +19,15 @@ export async function GET(req: Request) {
     where.employeeId = employeeId;
     // No date filter — get all history
   } else {
-    const today = dateStr ? new Date(dateStr) : new Date();
-    today.setHours(0, 0, 0, 0);
-    where.attendanceDate = today;
+    // attendanceDate is a day marker, but not always stored at midnight — the
+    // writers call setHours(0,0,0,0) in the server's local zone, so the stored
+    // value can land at 04:00 and an exact-equality filter then matches
+    // nothing, which is why this page showed "No attendance records" on days
+    // full of them. Match the whole day as a range instead.
+    const day = dateStr ? new Date(`${dateStr}T00:00:00`) : new Date();
+    const dayStart = new Date(day.getFullYear(), day.getMonth(), day.getDate());
+    const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+    where.attendanceDate = { gte: dayStart, lt: dayEnd };
   }
 
   const limitParam = Number(url.searchParams.get("limit"));

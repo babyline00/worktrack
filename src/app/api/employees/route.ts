@@ -63,17 +63,35 @@ function sessionLeg(att: SessionLegSource | undefined, which: "checkIn" | "check
   };
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const companyId = (session.user as any).companyId;
+  const companyId = (session.user as any).companyId as string;
+
+  const url = new URL(req.url);
+  // `search` was accepted by callers but ignored here, so a lookup for one
+  // employee downloaded the whole roster — and the per-employee aggregates
+  // below run in a loop, which made that expensive as well as pointless.
+  const search = (url.searchParams.get("search") ?? "").trim();
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
 
   const employees = await db.employee.findMany({
-    where: { companyId },
+    where: {
+      companyId,
+      ...(search
+        ? {
+            OR: [
+              { empId: { contains: search } },
+              { firstName: { contains: search } },
+              { lastName: { contains: search } },
+              { email: { contains: search } },
+            ],
+          }
+        : {}),
+    },
     include: {
       department: true,
       assignments: { where: { status: "ACTIVE" }, include: { project: true } },
@@ -184,6 +202,28 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Employee ID already exists in this company" }, { status: 409 });
   }
 
+  // The create dialog sent a department *name* while this handler only read
+  // departmentId, so every employee was created with a null department and the
+  // list rendered a blank column. Accept either form, creating the Department
+  // row if a new name was typed.
+  let departmentId: string | null = null;
+  if (body.departmentId) {
+    const byId = await db.department.findFirst({
+      where: { id: String(body.departmentId), companyId },
+    });
+    departmentId = byId?.id ?? null;
+  } else if (body.department) {
+    const name = String(body.department).trim();
+    if (name) {
+      const dept = await db.department.upsert({
+        where: { companyId_name: { companyId, name } },
+        update: {},
+        create: { name, companyId },
+      });
+      departmentId = dept.id;
+    }
+  }
+
   // Auto-generate email if not provided
   const email = body.email || `${body.firstName.toLowerCase()}.${(body.lastName || "").toLowerCase()}@worktrack.io`;
 
@@ -200,7 +240,7 @@ export async function POST(req: Request) {
       lastName: body.lastName ?? "",
       email,
       phone: body.phone,
-      departmentId: body.departmentId ?? null,
+      departmentId,
       designation: body.designation,
       status: body.status?.toUpperCase() ?? "ACTIVE",
       avatarColor: body.avatarColor ?? "#2563eb",

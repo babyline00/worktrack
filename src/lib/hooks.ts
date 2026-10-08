@@ -71,8 +71,11 @@ export interface Project {
 
 export interface AttendanceRow {
   id: string;
-  date: string;
+  /** Employee row id (internal). */
   employeeId: string;
+  /** Human-facing employee code, e.g. 2585436361. */
+  empId: string;
+  date: string;
   employeeName: string;
   employeeInitials: string;
   avatarColor: string;
@@ -91,6 +94,8 @@ export interface AttendanceRow {
   accuracyM: number;
   photoCheckIn: boolean;
   photoCheckOut: boolean;
+  checkInPhotoUrl: string | null;
+  checkOutPhotoUrl: string | null;
   insideGeofence: boolean;
 }
 
