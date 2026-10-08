@@ -19,10 +19,14 @@ import {
   Trash2,
   Eye,
   EyeOff,
+  ChevronRight as ChevronRightIcon,
+  Camera as CameraIcon,
+  AlertTriangle as AlertTriangleIcon,
+  X,
 } from "lucide-react";
 import { useEmployees, useProjects, useCreateEmployee, useDeleteEmployee } from "@/lib/hooks";
 import { useApp } from "@/lib/store";
-import { Avatar, Card, PageHeader, StatusPill } from "../ui";
+import { Avatar, Card, PageHeader, StatusPill, VerificationBadge } from "../ui";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -241,11 +245,7 @@ function EmployeeProfile({ employee, onBack }: { employee: any; onBack: () => vo
         </TabsContent>
 
         <TabsContent value="attendance">
-          <Card className="flex flex-col items-center justify-center py-16 text-center">
-            <Clock size={40} className="text-muted-foreground/40" />
-            <p className="mt-3 text-sm font-medium text-navy">Attendance history</p>
-            <p className="mt-1 text-xs text-muted-foreground">Daily check-in/out records, photos, and locations appear here.</p>
-          </Card>
+          <EmployeeAttendanceHistory employeeId={employee.id} />
         </TabsContent>
 
         <TabsContent value="projects" className="space-y-3">
@@ -606,5 +606,255 @@ function DeleteEmployeeDialog({ id, onClose }: { id: string | null; onClose: () 
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+  );
+}
+
+// ============================================================
+// EmployeeAttendanceHistory — loads real records + shows photos
+// ============================================================
+function EmployeeAttendanceHistory({ employeeId }: { employeeId: string }) {
+  const [records, setRecords] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedRecord, setSelectedRecord] = useState<any>(null);
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      try {
+        // Fetch attendance for this employee via the v1 API with employeeId filter
+        const res = await fetch(`/api/attendance?employeeId=${employeeId}&limit=50`);
+        if (!res.ok) throw new Error("Failed");
+        const data = await res.json();
+        setRecords(data.attendance ?? []);
+      } catch {
+        setRecords([]);
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, [employeeId]);
+
+  if (loading) {
+    return <Card className="p-8 text-center"><div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" /></Card>;
+  }
+
+  if (records.length === 0) {
+    return (
+      <Card className="flex flex-col items-center justify-center py-16 text-center">
+        <Clock size={40} className="text-muted-foreground/40" />
+        <p className="mt-3 text-sm font-medium text-navy">No attendance records</p>
+        <p className="mt-1 text-xs text-muted-foreground">This employee hasn't checked in yet.</p>
+      </Card>
+    );
+  }
+
+  return (
+    <>
+      <div className="space-y-3">
+        {records.map((r) => (
+          <Card key={r.id} className="cursor-pointer transition hover:border-primary/40" onClick={() => setSelectedRecord(r)}>
+            <div className="flex items-center gap-4 p-4">
+              {/* Check-in photo thumbnail */}
+              <div className="flex gap-2">
+                <div className="h-16 w-16 overflow-hidden rounded-lg border border-border bg-muted">
+                  {r.checkInPhotoUrl ? (
+                    <img src={r.checkInPhotoUrl} alt="Check-in" className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-muted-foreground">
+                      <CameraIcon size={16} />
+                    </div>
+                  )}
+                </div>
+                <div className="h-16 w-16 overflow-hidden rounded-lg border border-border bg-muted">
+                  {r.checkOutPhotoUrl ? (
+                    <img src={r.checkOutPhotoUrl} alt="Check-out" className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-muted-foreground">
+                      <CameraIcon size={16} />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Details */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold text-navy">{r.date}</p>
+                  <StatusPill status={r.status as any} />
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">{r.project}</p>
+                <div className="mt-2 flex items-center gap-4 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1">
+                    <span className="h-2 w-2 rounded-full bg-success" /> In: {r.checkIn}
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="h-2 w-2 rounded-full bg-danger" /> Out: {r.checkOut ?? "—"}
+                  </span>
+                  <span className="font-medium text-navy">{r.hoursMins}</span>
+                  {!r.insideGeofence && (
+                    <span className="flex items-center gap-1 text-danger">
+                      <AlertTriangleIcon size={12} /> Outside geofence
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <ChevronRightIcon size={16} className="text-muted-foreground" />
+            </div>
+          </Card>
+        ))}
+      </div>
+
+      {/* Detail modal */}
+      {selectedRecord && (
+        <AttendanceDetailModal record={selectedRecord} onClose={() => setSelectedRecord(null)} />
+      )}
+    </>
+  );
+}
+
+// ============================================================
+// AttendanceDetailModal — full detail with large photos + GPS
+// ============================================================
+function AttendanceDetailModal({ record, onClose }: { record: any; onClose: () => void }) {
+  const [showPhoto, setShowPhoto] = useState<string | null>(null);
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="scroll-thin max-h-[90vh] overflow-y-auto sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Attendance Details</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-5 py-2">
+          {/* Employee + date */}
+          <div className="flex items-center gap-3">
+            <Avatar
+              initials={record.employeeInitials ?? "?"}
+              color={record.avatarColor ?? "#2563eb"}
+              size={44}
+            />
+            <div>
+              <p className="text-sm font-semibold text-navy">{record.employeeName}</p>
+              <p className="text-xs text-muted-foreground">{record.employeeId} • {record.date}</p>
+            </div>
+            <div className="ml-auto">
+              <StatusPill status={record.status as any} />
+            </div>
+          </div>
+
+          {/* Project */}
+          <div className="rounded-lg bg-muted/30 p-3">
+            <p className="text-xs text-muted-foreground">Project</p>
+            <p className="text-sm font-medium text-navy">{record.project}</p>
+          </div>
+
+          {/* Check-in section */}
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Check-In</p>
+            <p className="text-2xl font-bold text-navy">{record.checkIn}</p>
+            {/* Check-in photo */}
+            <div className="mt-3">
+              <p className="mb-1.5 text-xs text-muted-foreground">Check-In Photo</p>
+              <div
+                className="flex aspect-video cursor-pointer items-center justify-center overflow-hidden rounded-lg border border-dashed border-border bg-muted/30 transition hover:border-primary/40"
+                onClick={() => record.checkInPhotoUrl && setShowPhoto(record.checkInPhotoUrl)}
+              >
+                {record.checkInPhotoUrl ? (
+                  <img src={record.checkInPhotoUrl} alt="Check-in photo" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex flex-col items-center gap-1 text-muted-foreground">
+                    <CameraIcon size={24} />
+                    <p className="text-[11px]">No photo</p>
+                  </div>
+                )}
+              </div>
+            </div>
+            {/* GPS info */}
+            <div className="mt-3 space-y-2 rounded-lg bg-muted/30 p-3 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Location</span>
+                <span className="font-medium text-navy">{record.location}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Coordinates</span>
+                <span className="font-mono text-xs text-navy">{record.coords.lat.toFixed(5)}, {record.coords.lng.toFixed(5)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Accuracy</span>
+                <span className="font-medium text-navy">{record.accuracyM}m</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Geofence</span>
+                <span className={cn("font-medium", record.insideGeofence ? "text-success" : "text-danger")}>
+                  {record.insideGeofence ? "✓ Inside" : "✗ Outside"}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Check-out section */}
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Check-Out</p>
+            <p className="text-2xl font-bold text-navy">{record.checkOut ?? "—"}</p>
+            {/* Check-out photo */}
+            <div className="mt-3">
+              <p className="mb-1.5 text-xs text-muted-foreground">Check-Out Photo</p>
+              <div
+                className="flex aspect-video cursor-pointer items-center justify-center overflow-hidden rounded-lg border border-dashed border-border bg-muted/30 transition hover:border-primary/40"
+                onClick={() => record.checkOutPhotoUrl && setShowPhoto(record.checkOutPhotoUrl)}
+              >
+                {record.checkOutPhotoUrl ? (
+                  <img src={record.checkOutPhotoUrl} alt="Check-out photo" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex flex-col items-center gap-1 text-muted-foreground">
+                    <CameraIcon size={24} />
+                    <p className="text-[11px]">No photo</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Summary */}
+          <div className="rounded-lg border border-border p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Total Working Time</span>
+              <span className="text-2xl font-bold text-primary">{record.hoursMins}</span>
+            </div>
+            {record.lateMins && record.lateMins > 0 && (
+              <div className="mt-2 flex items-center justify-between border-t border-border pt-2">
+                <span className="text-sm text-muted-foreground">Late by</span>
+                <span className="font-medium text-warning">{record.lateMins} min</span>
+              </div>
+            )}
+            <div className="mt-2 flex items-center justify-between border-t border-border pt-2">
+              <span className="text-sm text-muted-foreground">Verification</span>
+              <VerificationBadge status={record.verification as any} />
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <DialogClose asChild><Button variant="outline" onClick={onClose}>Close</Button></DialogClose>
+        </DialogFooter>
+      </DialogContent>
+
+      {/* Full-screen photo viewer */}
+      {showPhoto && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-navy/90 p-4 backdrop-blur-sm"
+          onClick={() => setShowPhoto(null)}
+        >
+          <div className="relative max-h-full max-w-2xl">
+            <button className="absolute -top-10 right-0 flex h-8 w-8 items-center justify-center rounded-full bg-white/20 text-white hover:bg-white/30">
+              <X size={18} />
+            </button>
+            <img src={showPhoto} alt="Attendance photo" className="max-h-[80vh] rounded-lg object-contain" />
+          </div>
+        </div>
+      )}
+    </Dialog>
   );
 }
