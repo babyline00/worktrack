@@ -13,9 +13,7 @@ import {
   formatTimeInTimezone,
 } from "@/lib/v1";
 import { emitCheckin } from "@/lib/realtime-server";
-import { writeFileSync, mkdirSync } from "fs";
-import { join } from "path";
-import crypto from "crypto";
+import { storeAttendancePhoto } from "@/lib/photo-storage";
 
 export const runtime = "nodejs";
 
@@ -118,22 +116,12 @@ export async function POST(req: Request) {
     }
 
     // ============================================================
-    // SAVE PHOTO TO DISK
+    // PENDING PHOTO BUFFER
     // ============================================================
+    // Held in memory until the attendance row exists, then persisted — see
+    // storeAttendancePhoto for why the bytes live in the database.
     const now = new Date();
-    const y = now.getFullYear();
-    const m = String(now.getMonth() + 1).padStart(2, "0");
-    const d = String(now.getDate()).padStart(2, "0");
-    const photoDir = join(process.cwd(), "public", "uploads", "attendance", String(y), m, d, employee.empId);
-    mkdirSync(photoDir, { recursive: true });
-    const photoId = crypto.randomUUID();
-    const ext = photoFile.type === "image/png" ? "png" : "jpg";
-    const fileName = `${photoId}-checkin.${ext}`;
-    const filePath = join(photoDir, fileName);
-    const buffer = Buffer.from(await photoFile.arrayBuffer());
-    writeFileSync(filePath, buffer);
-    const photoUrl = `/uploads/attendance/${y}/${m}/${d}/${employee.empId}/${fileName}`;
-    const storageKey = `attendance/${y}/${m}/${d}/${employee.empId}/${fileName}`;
+    const photoBuffer = Buffer.from(await photoFile.arrayBuffer());
 
     // ============================================================
     // DETERMINE SHIFT & LATE STATUS
@@ -180,16 +168,13 @@ export async function POST(req: Request) {
     });
 
     // Save photo record
-    await db.attendancePhoto.create({
-      data: {
-        attendanceId: attendance.id,
-        type: "CHECK_IN",
-        storageKey,
-        photoUrl,
-        mimeType: photoFile.type,
-        fileSize: photoFile.size,
-        capturedAt: capturedAt ? new Date(capturedAt) : serverReceivedAt,
-      },
+    const storedPhoto = await storeAttendancePhoto({
+      attendanceId: attendance.id,
+      type: "CHECK_IN",
+      buffer: photoBuffer,
+      mimeType: photoFile.type,
+      employeeEmpId: employee.empId,
+      capturedAt: capturedAt ? new Date(capturedAt) : serverReceivedAt,
     });
 
     // Save initial location
@@ -252,7 +237,7 @@ export async function POST(req: Request) {
           projectId: project.id,
           projectName: project.name,
           checkInAt: serverReceivedAt.toISOString(),
-          checkInPhoto: photoUrl,
+          checkInPhoto: storedPhoto.photoUrl,
           location: {
             latitude,
             longitude,

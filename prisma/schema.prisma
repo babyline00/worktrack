@@ -211,13 +211,18 @@ model AttendancePhoto {
   id           String   @id @default(cuid())
   attendanceId String
   type         String   // CHECK_IN | CHECK_OUT
-  storageKey   String   // file path / object key
-  photoUrl     String   // public/signed URL
+  storageKey   String   // object key / legacy file path
+  photoUrl     String   // URL served by /api/.../attendance/photo/:id
   mimeType     String   @default("image/jpeg")
   fileSize     Int      @default(0)
   capturedAt   DateTime?
   uploadedAt   DateTime @default(now())
   metadata     String?  // JSON: hash, dimensions, etc.
+
+  // Image bytes. Required on serverless hosts (Vercel) where the filesystem is
+  // read-only, so writing to public/uploads failed with ENOENT and took every
+  // photo check-in/check-out down with it.
+  data         Bytes?
 
   attendance Attendance @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
 

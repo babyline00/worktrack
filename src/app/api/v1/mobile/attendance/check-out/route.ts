@@ -13,9 +13,7 @@ import {
   formatMins,
 } from "@/lib/v1";
 import { emitCheckout } from "@/lib/realtime-server";
-import { writeFileSync, mkdirSync } from "fs";
-import { join } from "path";
-import crypto from "crypto";
+import { storeAttendancePhoto } from "@/lib/photo-storage";
 
 export const runtime = "nodejs";
 
@@ -71,21 +69,9 @@ export async function POST(req: Request) {
     const projectRadius = attendance.project?.radiusM ?? 200;
     const isOutside = distance > projectRadius;
 
-    // Save photo
+    // Pending photo buffer — persisted once the record is updated.
     const now = new Date();
-    const y = now.getFullYear();
-    const m = String(now.getMonth() + 1).padStart(2, "0");
-    const d = String(now.getDate()).padStart(2, "0");
-    const photoDir = join(process.cwd(), "public", "uploads", "attendance", String(y), m, d, employee.empId);
-    mkdirSync(photoDir, { recursive: true });
-    const photoId = crypto.randomUUID();
-    const ext = photoFile.type === "image/png" ? "png" : "jpg";
-    const fileName = `${photoId}-checkout.${ext}`;
-    const filePath = join(photoDir, fileName);
-    const buffer = Buffer.from(await photoFile.arrayBuffer());
-    writeFileSync(filePath, buffer);
-    const photoUrl = `/uploads/attendance/${y}/${m}/${d}/${employee.empId}/${fileName}`;
-    const storageKey = `attendance/${y}/${m}/${d}/${employee.empId}/${fileName}`;
+    const photoBuffer = Buffer.from(await photoFile.arrayBuffer());
 
     const serverReceivedAt = new Date();
     const workingMins = Math.max(0, Math.round((serverReceivedAt.getTime() - attendance.checkIn.getTime()) / 60000));
@@ -112,16 +98,13 @@ export async function POST(req: Request) {
     });
 
     // Save checkout photo
-    await db.attendancePhoto.create({
-      data: {
-        attendanceId: attendance.id,
-        type: "CHECK_OUT",
-        storageKey,
-        photoUrl,
-        mimeType: photoFile.type,
-        fileSize: photoFile.size,
-        capturedAt: capturedAt ? new Date(capturedAt) : serverReceivedAt,
-      },
+    const storedPhoto = await storeAttendancePhoto({
+      attendanceId: attendance.id,
+      type: "CHECK_OUT",
+      buffer: photoBuffer,
+      mimeType: photoFile.type,
+      employeeEmpId: employee.empId,
+      capturedAt: capturedAt ? new Date(capturedAt) : serverReceivedAt,
     });
 
     // Save checkout location
@@ -162,7 +145,7 @@ export async function POST(req: Request) {
           checkOutAt: updated.checkOut?.toISOString(),
           workingMinutes: workingMins,
           workingTime: formatMins(workingMins),
-          checkOutPhoto: photoUrl,
+          checkOutPhoto: storedPhoto.photoUrl,
           insideGeofence: !isOutside,
           distanceFromProject: distance,
           verificationStatus: updated.verificationStatus,
