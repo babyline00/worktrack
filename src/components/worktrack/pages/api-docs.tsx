@@ -196,11 +196,19 @@ export function ApiDocsPage() {
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
 
-  function copy(text: string, id: string) {
-    navigator.clipboard.writeText(text);
-    setCopied(id);
-    setTimeout(() => setCopied(null), 1500);
-    toast.success("Copied to clipboard");
+  async function copy(text: string, id: string) {
+    // The write was never awaited, so on an insecure origin or a denied
+    // permission the UI still claimed success and showed the check icon.
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(id);
+      setTimeout(() => setCopied(null), 1500);
+      toast.success("Copied to clipboard");
+    } catch {
+      toast.error("Clipboard blocked by the browser", {
+        description: "Select the text and copy it manually.",
+      });
+    }
   }
 
   async function runTest() {
@@ -214,8 +222,18 @@ export function ApiDocsPage() {
         headers,
         body: ["GET", "DELETE"].includes(tester.method) ? undefined : tester.body,
       });
-      const data = await res.json();
-      setResponse(JSON.stringify(data, null, 2));
+      const text = await res.text();
+      let data: unknown;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = text;
+      }
+      // Surface the status; otherwise a 401/403 body is indistinguishable from
+      // a successful call.
+      setResponse(
+        `HTTP ${res.status} ${res.statusText}\n\n${JSON.stringify(data, null, 2)}`,
+      );
     } catch (e: any) {
       setResponse(`Error: ${e.message}`);
     } finally {
@@ -345,7 +363,12 @@ export function ApiDocsPage() {
               return (
                 <Card key={id} className="p-0">
                   <button
-                    onClick={() => setExpanded(isExpanded ? null : id)}
+                    onClick={() => {
+                      setExpanded(isExpanded ? null : id);
+                      // Load the endpoint into the request runner, so an admin
+                      // does not have to retype the path and method by hand.
+                      setTester((t) => ({ ...t, path: ep.path, method: ep.method }));
+                    }}
                     className="flex w-full items-center gap-3 p-3 text-left"
                   >
                     <span className={cn("rounded-md px-2 py-1 text-[10px] font-bold w-14 text-center", METHOD_COLORS[ep.method])}>

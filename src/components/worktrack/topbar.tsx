@@ -16,6 +16,7 @@ import {
   Smartphone,
 } from "lucide-react";
 import { useApp } from "@/lib/store";
+import { toast } from "sonner";
 import { Avatar } from "./ui";
 import { Button } from "@/components/ui/button";
 import {
@@ -34,7 +35,12 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
-import { useEmployees, useProjects, useNotifications } from "@/lib/hooks";
+import {
+  useEmployees,
+  useProjects,
+  useNotifications,
+  useMarkNotificationsRead,
+} from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 
 const PAGE_LABELS: Record<string, string> = {
@@ -48,6 +54,7 @@ const PAGE_LABELS: Record<string, string> = {
   reports: "Reports",
   settings: "Settings",
   "api-docs": "API Documentation",
+  help: "Help & Support",
 };
 
 export function Topbar() {
@@ -56,6 +63,7 @@ export function Topbar() {
   const { data: empData } = useEmployees();
   const { data: projData } = useProjects();
   const { data: notifData } = useNotifications();
+  const markRead = useMarkNotificationsRead();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -106,7 +114,7 @@ export function Topbar() {
             {PAGE_LABELS[page] ?? "Dashboard"}
           </h2>
           <p className="hidden text-xs text-muted-foreground sm:block">
-            Good morning, Ahmad
+            {`Good morning, ${userName.split(" ")[0]}`}
           </p>
         </div>
 
@@ -176,6 +184,8 @@ export function Topbar() {
               {NOTIFICATIONS_LIVE.map((n) => (
                 <button
                   key={n.id}
+                  // Rows were inert; clicking one now clears the unread badge.
+                  onClick={() => unreadCount > 0 && markRead.mutate()}
                   className={cn(
                     "flex w-full gap-3 border-b px-4 py-3 text-left transition hover:bg-muted",
                     n.unread && "bg-accent/40",
@@ -199,8 +209,17 @@ export function Topbar() {
                 </button>
               ))}
             </div>
-            <DropdownMenuItem className="justify-center py-2 text-sm font-medium text-primary">
-              View all notifications
+            <DropdownMenuItem
+              className="justify-center py-2 text-sm font-medium text-primary"
+              onSelect={(e) => {
+                e.preventDefault();
+                markRead.mutate();
+                toast.success(
+                  unreadCount > 0 ? `${unreadCount} notification${unreadCount === 1 ? "" : "s"} marked read` : "No unread notifications",
+                );
+              }}
+            >
+              Mark all as read
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -210,7 +229,9 @@ export function Topbar() {
           variant="ghost"
           size="icon"
           aria-label="Help"
+          title="Help & Support"
           className="hidden sm:inline-flex"
+          onClick={() => setPage("help")}
         >
           <HelpCircle size={18} />
         </Button>

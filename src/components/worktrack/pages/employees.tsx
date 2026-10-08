@@ -8,6 +8,8 @@ import {
   ArrowLeft,
   Pencil,
   Upload,
+  LogIn,
+  LogOut,
   Mail,
   Phone,
   Briefcase,
@@ -136,7 +138,15 @@ export function EmployeesPage() {
                         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(ev) => { ev.stopPropagation(); setDeleteId(e.id); }}>
                           <Trash2 size={14} className="text-muted-foreground hover:text-danger" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(ev) => ev.stopPropagation()}>
+                        {/* Opened a menu that was never implemented; this now
+                            opens the employee record instead of doing nothing. */}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          title="More actions"
+                          onClick={(ev) => { ev.stopPropagation(); setSelectedEmployee(e.id); }}
+                        >
                           <MoreVertical size={14} />
                         </Button>
                       </div>
@@ -162,10 +172,65 @@ export function EmployeesPage() {
 
 function EmployeeProfile({ employee, onBack }: { employee: any; onBack: () => void }) {
   const [editOpen, setEditOpen] = useState(false);
-  const monthlyTrend = Array.from({ length: 30 }, (_, i) => ({
-    label: `D${i + 1}`,
-    hours: 6 + Math.round(Math.sin(i / 4) * 2 + (i % 3)),
-  }));
+  // Real per-day hours from this employee's attendance history. This was a sine
+  // wave (6 + sin(i/4)*2 + i%3), so the "Working Hours (Last 30 Days)" chart
+  // showed invented data directly above a real monthly total.
+  const [history, setHistory] = useState<{ date: string; workingMinutes: number }[]>([]);
+  const [activity, setActivity] = useState<
+    { at: string; label: string; kind: "check_in" | "check_out"; where: string }[]
+  >([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/attendance?employeeId=${encodeURIComponent(employee.id)}&limit=90`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled) return;
+        // Collapse to one bucket per day across the last 30 days.
+        const byDay = new Map<string, number>();
+        for (const r of d.attendance ?? []) {
+          const day = new Date(r.checkInIso ?? r.date);
+          if (Number.isNaN(day.getTime())) continue;
+          const key = day.toISOString().slice(0, 10);
+          byDay.set(key, (byDay.get(key) ?? 0) + (r.workingMinutes ?? 0));
+        }
+        // Same records, as a check-in/check-out timeline.
+        const events = (d.attendance ?? [])
+          .flatMap((r) => {
+            const rows: { at: string; label: string; kind: "check_in" | "check_out"; where: string }[] = [];
+            if (r.checkInIso) {
+              rows.push({
+                at: new Date(r.checkInIso).toLocaleString(),
+                label: `Checked in at ${r.checkIn}`,
+                kind: "check_in",
+                where: r.project,
+              });
+            }
+            if (r.checkOutIso) {
+              rows.push({
+                at: new Date(r.checkOutIso).toLocaleString(),
+                label: `Checked out at ${r.checkOut}`,
+                kind: "check_out",
+                where: r.project,
+              });
+            }
+            return rows;
+          })
+          .sort((a, b) => b.at.localeCompare(a.at))
+          .slice(0, 25);
+        setActivity(events);
+
+        const out: { date: string; workingMinutes: number }[] = [];
+        for (let i = 29; i >= 0; i--) {
+          const d0 = new Date();
+          d0.setDate(d0.getDate() - i);
+          const key = `${d0.getFullYear()}-${String(d0.getMonth() + 1).padStart(2, "0")}-${String(d0.getDate()).padStart(2, "0")}`;
+          out.push({ date: key, workingMinutes: byDay.get(key) ?? 0 });
+        }
+        setHistory(out);
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [employee.id]);
   const stats = [
     { label: "Present This Month", value: employee.presentThisMonth, icon: Calendar, tone: "text-success" },
     { label: "Late", value: employee.lateThisMonth, icon: Clock, tone: "text-warning" },
@@ -233,12 +298,29 @@ function EmployeeProfile({ employee, onBack }: { employee: any; onBack: () => vo
             <Card>
               <p className="mb-3 text-sm font-semibold text-navy">Working Hours (Last 30 Days)</p>
               <div className="h-44">
-                <p className="text-sm text-muted-foreground">Total: {employee.totalHours}h • Avg: {(employee.totalHours / 30).toFixed(1)}h/day</p>
-                <div className="mt-4 flex h-32 items-end gap-1">
-                  {monthlyTrend.map((d, i) => (
-                    <div key={i} className="flex-1 rounded-t bg-primary/30 hover:bg-primary" style={{ height: `${(d.hours / 12) * 100}%` }} title={`Day ${i + 1}: ${d.hours}h`} />
-                  ))}
-                </div>
+                <p className="text-sm text-muted-foreground">
+                  Total: {employee.totalHours}h • Avg: {(employee.totalHours / 30).toFixed(1)}h/day
+                  {" "}· {history.filter((d) => d.workingMinutes > 0).length} days recorded
+                </p>
+                {history.some((d) => d.workingMinutes > 0) ? (
+                  <div className="mt-4 flex h-32 items-end gap-1">
+                    {history.map((d) => {
+                      const hours = d.workingMinutes / 60;
+                      return (
+                        <div
+                          key={d.date}
+                          className={cn("flex-1 rounded-t", hours > 0 ? "bg-primary/70 hover:bg-primary" : "bg-muted")}
+                          style={{ height: `${Math.min(100, (hours / 12) * 100)}%` }}
+                          title={`${d.date}: ${hours.toFixed(1)}h`}
+                        />
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="mt-6 text-sm text-muted-foreground">
+                    No hours recorded in the last 30 days.
+                  </p>
+                )}
               </div>
             </Card>
           </div>
@@ -264,18 +346,54 @@ function EmployeeProfile({ employee, onBack }: { employee: any; onBack: () => vo
         </TabsContent>
 
         <TabsContent value="activity">
-          <Card className="flex flex-col items-center justify-center py-16 text-center">
-            <p className="text-sm font-medium text-navy">No recent activity</p>
-            <p className="mt-1 text-xs text-muted-foreground">Activity log will appear here as the employee uses WorkTrack.</p>
-          </Card>
+          {/* Real timeline built from this employee's attendance records. There
+              is no activity table behind this tab, so it previously promised a
+              log that could never populate. */}
+          {activity.length === 0 ? (
+            <Card className="flex flex-col items-center justify-center py-16 text-center">
+              <p className="text-sm font-medium text-navy">No recorded activity</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Check-ins and check-outs will appear here.
+              </p>
+            </Card>
+          ) : (
+            <Card className="p-4">
+              <div className="space-y-3">
+                {activity.map((a, i) => (
+                  <div key={`${a.at}-${i}`} className="flex items-start gap-3">
+                    <span
+                      className={cn(
+                        "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full",
+                        a.kind === "check_in"
+                          ? "bg-success-soft text-success"
+                          : a.kind === "check_out"
+                            ? "bg-primary/10 text-primary"
+                            : "bg-warning-soft text-warning",
+                      )}
+                    >
+                      {a.kind === "check_out" ? <LogOut size={13} /> : <LogIn size={13} />}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-navy">{a.label}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {a.at} {a.where ? `• ${a.where}` : ""}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="documents">
           <Card className="flex flex-col items-center justify-center py-16 text-center">
             <FileText size={40} className="text-muted-foreground/40" />
             <p className="mt-3 text-sm font-medium text-navy">No documents</p>
-            <p className="mt-1 text-xs text-muted-foreground">Upload contracts, IDs, or certificates for this employee.</p>
-            <Button variant="outline" size="sm" className="mt-4"><Upload size={14} className="mr-2" /> Upload Document</Button>
+            <p className="mt-1 text-xs text-muted-foreground">
+              No document storage is configured for WorkTrack, so there is nothing to
+              upload here yet.
+            </p>
           </Card>
         </TabsContent>
       </Tabs>
@@ -857,7 +975,11 @@ function AttendanceDetailModal({ record, onClose }: { record: any; onClose: () =
           onClick={() => setShowPhoto(null)}
         >
           <div className="relative max-h-full max-w-2xl">
-            <button className="absolute -top-10 right-0 flex h-8 w-8 items-center justify-center rounded-full bg-white/20 text-white hover:bg-white/30">
+            <button
+              onClick={() => setShowPhoto(null)}
+              aria-label="Close photo"
+              className="absolute -top-10 right-0 flex h-8 w-8 items-center justify-center rounded-full bg-white/20 text-white hover:bg-white/30"
+            >
               <X size={18} />
             </button>
             <img src={showPhoto} alt="Attendance photo" className="max-h-[80vh] rounded-lg object-contain" />

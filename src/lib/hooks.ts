@@ -249,6 +249,18 @@ export function useSettings() {
   });
 }
 
+export function useMarkNotificationsRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/notifications", { method: "PATCH" });
+      if (!res.ok) throw new Error("Failed to mark notifications read");
+      return res.json();
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
+  });
+}
+
 export function useNotifications() {
   return useQuery<{ notifications: any[] }>({
     queryKey: ["notifications"],

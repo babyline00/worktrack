@@ -16,6 +16,8 @@ import {
   MoreVertical,
   Code2,
 } from "lucide-react";
+import { useSession } from "next-auth/react";
+import { useEmployees, useLeaveRequests } from "@/lib/hooks";
 import { useApp, type PageKey } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { Avatar } from "./ui";
@@ -28,7 +30,7 @@ const NAV: {
   {
     items: [
       { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-      { key: "live", label: "Live Attendance", icon: Radio, badge: "32" },
+      { key: "live", label: "Live Attendance", icon: Radio, badge: "live" },
     ],
   },
   {
@@ -37,7 +39,7 @@ const NAV: {
       { key: "employees", label: "Employees", icon: Users },
       { key: "attendance", label: "Attendance", icon: CalendarCheck },
       { key: "shifts", label: "Shifts", icon: Clock },
-      { key: "leave", label: "Leave Management", icon: CalendarHeart, badge: "5" },
+      { key: "leave", label: "Leave Management", icon: CalendarHeart, badge: "leave" },
     ],
   },
   {
@@ -54,6 +56,34 @@ const BOTTOM = [
 
 export function Sidebar() {
   const { page, setPage, sidebarOpen, setSidebarOpen } = useApp();
+  const { data: session } = useSession();
+  const { data: empData } = useEmployees();
+  const { data: leaveData } = useLeaveRequests();
+
+  // Nav badges used to be fixed strings — "32" working, "5" pending leave —
+  // shown regardless of what the database actually held.
+  const workingCount = (empData?.employees ?? []).filter(
+    (e) => e.todaysStatus === "working" || e.todaysStatus === "late",
+  ).length;
+  const pendingLeave = (leaveData?.leaves ?? []).filter(
+    (l) => l.status === "pending",
+  ).length;
+
+  const badgeValue = (badge?: string) => {
+    if (badge === "live") return workingCount > 0 ? String(workingCount) : null;
+    if (badge === "leave") return pendingLeave > 0 ? String(pendingLeave) : null;
+    return badge ?? null;
+  };
+
+  const userName = session?.user?.name ?? "Signed in";
+  const userInitials =
+    userName
+      .split(" ")
+      .filter(Boolean)
+      .map((s) => s[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase() || "?";
 
   return (
     <>
@@ -120,7 +150,7 @@ export function Sidebar() {
                       size={18}
                     />
                     <span className="flex-1 text-left">{item.label}</span>
-                    {item.badge && (
+                    {badgeValue(item.badge) !== null && (
                       <span
                         className={cn(
                           "rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
@@ -129,7 +159,7 @@ export function Sidebar() {
                             : "bg-muted text-muted-foreground",
                         )}
                       >
-                        {item.badge}
+                        {badgeValue(item.badge)}
                       </span>
                     )}
                   </button>
@@ -168,30 +198,36 @@ export function Sidebar() {
                 </button>
               );
             })}
-            <a
-              href="#"
-              className="mt-0.5 flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-navy"
+            {/* Was href="#", which jumped to the top of the page. */}
+            <button
+              onClick={() => { setPage("help"); setSidebarOpen(false); }}
+              className={cn(
+                "mt-0.5 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition hover:bg-muted",
+                page === "help" ? "text-navy" : "text-muted-foreground hover:text-navy",
+              )}
             >
               <LifeBuoy size={18} />
               Help & Support
-            </a>
+            </button>
           </div>
         </nav>
 
-        {/* Profile */}
+        {/* Profile — the name and role came from session data, not a literal. */}
         <div className="border-t border-sidebar-border p-3">
           <div className="flex items-center gap-3 rounded-lg p-2 hover:bg-muted">
-            <Avatar initials="AH" color="#2563eb" size={36} />
+            <Avatar initials={userInitials} color="#2563eb" size={36} />
             <div className="min-w-0 flex-1 leading-tight">
-              <p className="truncate text-sm font-semibold text-navy">Ahmad</p>
-              <p className="truncate text-xs text-muted-foreground">
-                Administrator
+              <p className="truncate text-sm font-semibold text-navy">{userName}</p>
+              <p className="truncate text-xs text-muted-foreground capitalize">
+                {(session?.user as any)?.role?.toLowerCase() ?? "staff"}
               </p>
             </div>
             <Button
               variant="ghost"
               size="icon"
               className="h-7 w-7 text-muted-foreground"
+              title="Account settings"
+              onClick={() => setPage("settings")}
             >
               <MoreVertical size={14} />
             </Button>

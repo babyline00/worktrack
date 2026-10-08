@@ -60,7 +60,10 @@ export function EmployeeMobileView() {
   const [locating, setLocating] = useState(false);
 
   const todayRecord = myAttendance?.[0];
-  const isCheckedIn = !!todayRecord && !todayRecord.employeeName.includes("checked_out"); // any record means checked in
+  // Derived from the status the API returns, not from the employee's name —
+  // employeeName never contains "checked_out", so that check was always true.
+  const isOpenSession = todayRecord?.status === "working" || todayRecord?.status === "late";
+  const isCheckedIn = !!todayRecord && (isOpenSession || todayRecord.status === "break");
   const isCheckedOut = !!todayRecord?.checkOut;
   const workingMins = todayRecord ? parseHoursToMins(todayRecord.hoursMins) : 0;
 
@@ -405,6 +408,10 @@ function CameraCapture({ mode, onClose, onCapture, loading }: { mode: "checkin" 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
+  // The unmount cleanup below closed over the `stream` captured at mount, which
+  // is always null — so the camera stayed live whenever the dialog closed
+  // without confirming. A ref is always current.
+  const streamRef = useRef<MediaStream | null>(null);
   const [captured, setCaptured] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -415,6 +422,7 @@ function CameraCapture({ mode, onClose, onCapture, loading }: { mode: "checkin" 
           video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
           audio: false,
         });
+        streamRef.current = s;
         setStream(s);
         if (videoRef.current) {
           videoRef.current.srcObject = s;
@@ -426,9 +434,9 @@ function CameraCapture({ mode, onClose, onCapture, loading }: { mode: "checkin" 
     }
     startCamera();
     return () => {
-      stream?.getTracks().forEach((t) => t.stop());
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function capture() {
@@ -453,6 +461,7 @@ function CameraCapture({ mode, onClose, onCapture, loading }: { mode: "checkin" 
           video: { facingMode: "user" },
           audio: false,
         });
+        streamRef.current = s;
         setStream(s);
         if (videoRef.current) {
           videoRef.current.srcObject = s;

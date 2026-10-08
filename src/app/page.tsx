@@ -17,6 +17,7 @@ import { LeavePage } from "@/components/worktrack/pages/leave";
 import { ReportsPage } from "@/components/worktrack/pages/reports";
 import { SettingsPage } from "@/components/worktrack/pages/settings";
 import { ApiDocsPage } from "@/components/worktrack/pages/api-docs";
+import { HelpSupportPage } from "@/components/worktrack/pages/help";
 
 export default function Home() {
   const { data: session, status } = useSession();
@@ -69,6 +70,7 @@ export default function Home() {
           {page === "reports" && <ReportsPage />}
           {page === "settings" && <SettingsPage />}
           {page === "api-docs" && <ApiDocsPage />}
+          {page === "help" && <HelpSupportPage />}
         </main>
       </div>
     </div>
