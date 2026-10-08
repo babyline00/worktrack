@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Download, Search, MapPin, X, Calendar as CalIcon } from "lucide-react";
-import { useAttendance } from "@/lib/hooks";
+import { Download, Search, MapPin, X, Calendar as CalIcon, Eye, Pencil, User as UserIcon } from "lucide-react";
+import { useAttendance, useEmployees } from "@/lib/hooks";
 import { useApp } from "@/lib/store";
 import {
   Avatar,
@@ -33,6 +33,8 @@ import { toast } from "sonner";
 export function AttendancePage() {
   const { attendanceDetailId, setAttendanceDetail } = useApp();
   const { data, isLoading } = useAttendance();
+  const { data: empData } = useEmployees();
+  const { setPage } = useApp();
   const [query, setQuery] = useState("");
   const [project, setProject] = useState("all");
   const [status, setStatus] = useState("all");
@@ -110,11 +112,12 @@ export function AttendancePage() {
                   <th className="px-4 py-3 font-medium">Hours</th>
                   <th className="px-4 py-3 font-medium">Status</th>
                   <th className="hidden px-4 py-3 font-medium lg:table-cell">Verification</th>
+                  <th className="px-4 py-3 font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.length === 0 && (
-                  <tr><td colSpan={8} className="px-4 py-12 text-center">
+                  <tr><td colSpan={9} className="px-4 py-12 text-center">
                     <p className="text-sm font-medium text-navy">No attendance records match your filters</p>
                     <p className="mt-1 text-xs text-muted-foreground">Try adjusting filters or clearing the search.</p>
                   </td></tr>
@@ -137,6 +140,16 @@ export function AttendancePage() {
                     <td className="px-4 py-3 text-sm font-medium text-navy">{r.hoursMins}</td>
                     <td className="px-4 py-3"><StatusPill status={r.status as any} /></td>
                     <td className="hidden px-4 py-3 lg:table-cell"><VerificationBadge status={r.verification as any} /></td>
+                    <td className="px-4 py-3">
+                      <div className="flex gap-1">
+                        <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setAttendanceDetail(r.id); }}>
+                          <Eye size={12} className="mr-1" /> View
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setAdjustId(r.id); }}>
+                          <Pencil size={12} className="mr-1" /> Adjust
+                        </Button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -153,11 +166,26 @@ export function AttendancePage() {
               <div className="space-y-5 px-4 pb-8">
                 <div className="flex items-center gap-3 pt-2">
                   <Avatar initials={detail.employeeInitials} color={detail.avatarColor} size={48} />
-                  <div>
+                  <div className="flex-1">
                     <p className="text-sm font-semibold text-navy">{detail.employeeName}</p>
                     <p className="text-xs text-muted-foreground">{detail.employeeId}</p>
-                    <p className="text-xs text-muted-foreground">06 October 2026</p>
+                    <p className="text-xs text-muted-foreground">{detail.date}</p>
                   </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      // Find employee by empId and navigate to their profile
+                      const emp = empData?.employees.find((e) => e.empId === detail.employeeId);
+                      if (emp) {
+                        setAttendanceDetail(null);
+                        setPage("employees");
+                        useApp.setState({ selectedEmployeeId: emp.id });
+                      }
+                    }}
+                  >
+                    <UserIcon size={12} className="mr-1" /> Employee
+                  </Button>
                 </div>
 
                 <div>
