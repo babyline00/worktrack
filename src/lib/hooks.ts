@@ -65,6 +65,8 @@ export interface Project {
   workingNow: number;
   lateToday: number;
   absentToday: number;
+  /** Lifetime attendance rows, used to state delete impact honestly. */
+  totalAttendance: number;
 }
 
 export interface AttendanceRow {

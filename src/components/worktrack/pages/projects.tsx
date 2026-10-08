@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Plus,
   Users,
@@ -36,7 +36,6 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-  DialogClose,
 } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -70,29 +69,55 @@ export function ProjectsPage() {
   const { data: projData, isLoading } = useProjects();
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<Project | null>(null);
-  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<Project | null>(null);
 
   const projects = projData?.projects ?? [];
   const selected = projects.find((p) => p.id === selectedProjectId);
 
+  // The dialogs are hoisted out of the branches below and mounted once, for
+  // every screen. They used to live only in the list branch, so the detail
+  // page's Edit button set `editing` while the dialog that was supposed to show
+  // it was never mounted — the button did nothing at all.
+  const dialogs = (
+    <>
+      <ProjectFormDialog key="create" open={createOpen} onOpenChange={setCreateOpen} />
+      {editing && (
+        <ProjectFormDialog
+          key={editing.id}
+          open
+          project={editing}
+          onOpenChange={(o) => !o && setEditing(null)}
+        />
+      )}
+      <DeleteProjectDialog project={deleting} onClose={() => setDeleting(null)} />
+    </>
+  );
+
   if (selected) {
     return (
-      <ProjectDetail
-        project={selected}
-        onBack={() => setSelectedProject(null)}
-        onEdit={() => setEditing(selected)}
-      />
+      <>
+        <ProjectDetail
+          project={selected}
+          onBack={() => setSelectedProject(null)}
+          onEdit={() => setEditing(selected)}
+          onDelete={() => setDeleting(selected)}
+        />
+        {dialogs}
+      </>
     );
   }
 
   if (isLoading) {
     return (
-      <div className="space-y-6">
-        <PageHeader title="Projects" subtitle="Loading…" />
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-56 rounded-xl" />)}
+      <>
+        <div className="space-y-6">
+          <PageHeader title="Projects" subtitle="Loading…" />
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-56 rounded-xl" />)}
+          </div>
         </div>
-      </div>
+        {dialogs}
+      </>
     );
   }
 
@@ -123,7 +148,7 @@ export function ProjectsPage() {
                     <p className="text-xs text-muted-foreground">{p.code}</p>
                   </div>
                   <div className="flex items-center gap-1">
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); setDeleteId(p.id); }}>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); setDeleting(p); }}>
                       <Trash2 size={14} className="text-muted-foreground hover:text-danger" />
                     </Button>
                     <Button
@@ -169,20 +194,7 @@ export function ProjectsPage() {
         </div>
       )}
 
-      <ProjectFormDialog
-        key="create"
-        open={createOpen}
-        onOpenChange={setCreateOpen}
-      />
-      {editing && (
-        <ProjectFormDialog
-          key={editing.id}
-          open
-          project={editing}
-          onOpenChange={(o) => !o && setEditing(null)}
-        />
-      )}
-      <DeleteProjectDialog id={deleteId} onClose={() => setDeleteId(null)} />
+      {dialogs}
     </div>
   );
 }
@@ -191,14 +203,34 @@ function ProjectDetail({
   project,
   onBack,
   onEdit,
+  onDelete,
 }: {
   project: Project;
   onBack: () => void;
   onEdit: () => void;
+  onDelete: () => void;
 }) {
   const { setDrawerEmployee, setPage } = useApp();
   const { data: empData } = useEmployees();
   const projectEmployees = (empData?.employees ?? []).filter((e) => e.projectIds.includes(project.id));
+
+  // Cmd/Ctrl+E opens the editor, matching the shortcut shown on the button.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "e") return;
+      // Don't hijack the shortcut while the admin is typing, or when the
+      // editor is already open — Ctrl+E would otherwise re-open it on top.
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) {
+        return;
+      }
+      if (document.querySelector('[role="dialog"]')) return;
+      e.preventDefault();
+      onEdit();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onEdit]);
 
   const stats = [
     { label: "Employees", value: project.totalEmployees },
@@ -234,6 +266,14 @@ function ProjectDetail({
             </Badge>
             <Button variant="outline" size="sm" onClick={onEdit}>
               <Pencil size={14} className="mr-2" /> Edit Project
+              <kbd className="ml-2 hidden rounded border border-border px-1 py-0.5 font-mono text-[10px] font-normal text-muted-foreground sm:inline-block">
+                {typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform)
+                  ? "⌘E"
+                  : "Ctrl E"}
+              </kbd>
+            </Button>
+            <Button variant="outline" size="sm" onClick={onDelete}>
+              <Trash2 size={14} className="mr-2 text-danger" /> Delete
             </Button>
           </>
         }
@@ -621,6 +661,22 @@ function ProjectFormDialog({
 
   const valid = Object.keys(errors).length === 0;
 
+  // A dirty dialog closed by Cancel, Escape or an outside click would silently
+  // drop the admin's work, so ask first. Saving is exempt — it has its own path.
+  const requestClose = useCallback(
+    (next: boolean) => {
+      if (!next && dirty && !isEdit) {
+        if (confirm("Discard this project? Your changes will be lost.")) onOpenChange(false);
+        return;
+      }
+      if (!next && dirty && isEdit && !window.confirm("Discard your changes?")) {
+        return;
+      }
+      onOpenChange(next);
+    },
+    [dirty, isEdit, onOpenChange],
+  );
+
   /** Tracks edits so Save can stay disabled until something actually changes. */
   function touch<T>(setter: (v: T) => void) {
     return (v: T) => {
@@ -691,7 +747,7 @@ function ProjectFormDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={requestClose}>
       <DialogContent className="scroll-thin max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Edit Project" : "Create New Project"}</DialogTitle>
@@ -851,7 +907,7 @@ function ProjectFormDialog({
           )}
         </div>
         <DialogFooter>
-          <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+          <Button variant="outline" onClick={() => requestClose(false)}>Cancel</Button>
           <Button onClick={submit} disabled={pending || !valid || (isEdit && !dirty)}>
             {pending
               ? isEdit ? "Saving…" : "Creating…"
@@ -863,24 +919,61 @@ function ProjectFormDialog({
   );
 }
 
-function DeleteProjectDialog({ id, onClose }: { id: string | null; onClose: () => void }) {
+function DeleteProjectDialog({
+  project,
+  onClose,
+}: {
+  project: Project | null;
+  onClose: () => void;
+}) {
   const deleteProject = useDeleteProject();
+  const employees = project?.totalEmployees ?? 0;
+  const records = project?.totalAttendance ?? 0;
+
   return (
-    <AlertDialog open={!!id} onOpenChange={(o) => !o && onClose()}>
+    <AlertDialog open={!!project} onOpenChange={(o) => !o && onClose()}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Delete Project?</AlertDialogTitle>
-          <AlertDialogDescription>
-            Are you sure you want to delete this project? This action cannot be undone and will remove all associated assignments.
+          <AlertDialogTitle>Delete {project?.name ?? "project"}?</AlertDialogTitle>
+          <AlertDialogDescription asChild>
+            <div className="space-y-3 text-sm">
+              <p>This cannot be undone. Here is exactly what it affects:</p>
+              <ul className="space-y-1.5 text-xs">
+                <li className="flex items-start gap-2">
+                  <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-danger" />
+                  <span>
+                    <strong className="text-navy">{employees}</strong> employee
+                    {employees === 1 ? "" : " assignments"} will be removed. The employees
+                    themselves are not deleted.
+                  </span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-warning" />
+                  <span>
+                    <strong className="text-navy">{records}</strong> attendance record
+                    {records === 1 ? "" : "s"} will be kept but{" "}
+                    <strong>detached from this project</strong>, so they stop appearing in
+                    this project's attendance and reports.
+                  </span>
+                </li>
+              </ul>
+              <p className="text-xs text-muted-foreground">
+                If you only want to stop new check-ins, set the status to Paused instead —
+                that keeps the project and its history intact.
+              </p>
+            </div>
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
           <AlertDialogAction
             className="bg-danger text-white hover:bg-danger/90"
-            onClick={() => { if (id) deleteProject.mutate(id, { onSuccess: onClose }); }}
+            disabled={deleteProject.isPending}
+            onClick={() => {
+              if (project) deleteProject.mutate(project.id, { onSuccess: onClose });
+            }}
           >
-            Delete Project
+            {deleteProject.isPending ? "Deleting…" : "Delete Project"}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

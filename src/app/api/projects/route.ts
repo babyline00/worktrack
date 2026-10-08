@@ -47,6 +47,11 @@ export async function GET() {
     include: {
       assignments: { include: { employee: true } },
       attendance: { where: { attendanceDate: today } },
+      // Lifetime record count, so the delete dialog can state the real impact.
+      // The project relation on Attendance is optional, so deleting a project
+      // nulls it on every record rather than removing them — history survives
+      // but stops being attributable to this project.
+      _count: { select: { attendance: true } },
     },
     orderBy: { createdAt: "asc" },
   });
@@ -69,6 +74,7 @@ export async function GET() {
       startDate: p.startDate?.toISOString().split("T")[0] ?? "",
       endDate: p.endDate?.toISOString().split("T")[0],
       totalEmployees: p.assignments.length,
+      totalAttendance: p._count.attendance,
       presentToday,
       workingNow,
       lateToday,
