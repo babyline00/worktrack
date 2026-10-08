@@ -6,10 +6,16 @@ import { db } from "@/lib/db";
 /** Sentinel radius meaning "no geofence limit". */
 const NO_LIMIT_RADIUS = 9999999;
 
-/** Parses an optional coordinate. Returns NaN when absent so callers can treat
- *  "not provided" and "invalid" with one check. */
-function parseCoord(value: unknown, min: number, max: number): number {
-  if (value === undefined || value === null || value === "") return NaN;
+/**
+ * Parses an optional coordinate.
+ *
+ * Returns `null` when absent (a project may legitimately have no geofence yet)
+ * and `NaN` when present but unusable, so callers can tell "not provided" from
+ * "provided and wrong" — collapsing the two into one value makes a project
+ * without coordinates impossible to create.
+ */
+function parseCoord(value: unknown, min: number, max: number): number | null {
+  if (value === undefined || value === null || value === "") return null;
   const n = Number(value);
   if (!Number.isFinite(n) || n < min || n > max) return NaN;
   return n;
@@ -88,6 +94,9 @@ export async function POST(req: Request) {
   if (Number.isNaN(lat) || Number.isNaN(lng)) {
     return NextResponse.json({ error: "Coordinates must be numbers within valid ranges" }, { status: 400 });
   }
+  // Only one of the pair is usable, so treat a half-specified geofence as none:
+  // a project centred on (25.2, null) is never meaningful.
+  const hasCoords = lat !== null && lng !== null;
 
   const rawRadius = parseInt(body.geofenceRadius ?? body.radiusM ?? "200");
   if (!Number.isFinite(rawRadius) || rawRadius < 0) {
@@ -102,8 +111,8 @@ export async function POST(req: Request) {
       description: body.description ? String(body.description).trim() : null,
       status,
       location: body.location ? String(body.location).trim() : null,
-      lat: Number.isNaN(lat) ? null : lat,
-      lng: Number.isNaN(lng) ? null : lng,
+      lat: hasCoords ? lat : null,
+      lng: hasCoords ? lng : null,
       // 0 is how the UI spells "no limit"; the API needs a real large radius
       // because the geofence check compares distance against radiusM.
       radiusM: rawRadius === 0 ? NO_LIMIT_RADIUS : rawRadius,

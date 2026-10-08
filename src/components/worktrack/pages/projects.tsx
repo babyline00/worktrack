@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Plus,
   Users,
@@ -537,6 +537,10 @@ function ProjectSettingToggle({
 
 
 
+function FieldError({ children }: { children: React.ReactNode }) {
+  return <p className="mt-1 text-xs text-danger">{children}</p>;
+}
+
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between border-b border-border pb-2">
@@ -582,9 +586,70 @@ function ProjectFormDialog({
   const [noLimit, setNoLimit] = useState(!!project && project.radiusM >= NO_LIMIT_RADIUS);
   const [description, setDescription] = useState(project?.description ?? "");
   const [status, setStatus] = useState(project?.status ?? "active");
+  const [startDate, setStartDate] = useState(project?.startDate ?? "");
+  const [endDate, setEndDate] = useState(project?.endDate ?? "");
+  const [dirty, setDirty] = useState(false);
+
+  /** Client-side checks, so obvious mistakes never need a round trip. */
+  const errors = useMemo(() => {
+    const e: Record<string, string> = {};
+    if (!name.trim()) e.name = "Name is required";
+    if (!code.trim()) {
+      e.code = "Code is required";
+    } else if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,23}$/.test(code.trim())) {
+      e.code = "Use letters, numbers, dashes or underscores (max 24)";
+    }
+    if (!noLimit && (!Number.isFinite(radius) || radius < 0)) {
+      e.radius = "Enter a radius of 0 or more";
+    }
+    // A project with only half a coordinate pair cannot be placed on a map.
+    const hasLat = lat.trim() !== "";
+    const hasLng = lng.trim() !== "";
+    if (hasLat !== hasLng) {
+      e[hasLat ? "lng" : "lat"] = "Provide both latitude and longitude";
+    } else if (hasLat) {
+      const la = Number(lat);
+      const ln = Number(lng);
+      if (!Number.isFinite(la) || la < -90 || la > 90) e.lat = "Latitude must be between -90 and 90";
+      if (!Number.isFinite(ln) || ln < -180 || ln > 180) e.lng = "Longitude must be between -180 and 180";
+    }
+    if (startDate && endDate && endDate < startDate) {
+      e.endDate = "End date cannot be before the start date";
+    }
+    return e;
+  }, [name, code, lat, lng, radius, noLimit, startDate, endDate]);
+
+  const valid = Object.keys(errors).length === 0;
+
+  /** Tracks edits so Save can stay disabled until something actually changes. */
+  function touch<T>(setter: (v: T) => void) {
+    return (v: T) => {
+      setter(v);
+      setDirty(true);
+    };
+  }
+
+  const changes = useMemo(() => {
+    if (!project) return [];
+    const out: string[] = [];
+    if (name.trim() !== project.name) out.push("name");
+    if (code.trim() !== project.code) out.push("code");
+    if (client !== (project.client ?? "")) out.push("client");
+    if (description !== (project.description ?? "")) out.push("description");
+    if (status !== project.status) out.push("status");
+    if (location !== (project.location ?? "")) out.push("location");
+    const storedLat = project.coords.lat ? String(project.coords.lat) : "";
+    const storedLng = project.coords.lng ? String(project.coords.lng) : "";
+    if (lat !== storedLat || lng !== storedLng) out.push("coordinates");
+    const wantRadius = noLimit ? NO_LIMIT_RADIUS : radius;
+    if (wantRadius !== project.radiusM) out.push("geofence radius");
+    if (startDate !== (project.startDate ?? "")) out.push("start date");
+    if (endDate !== (project.endDate ?? "")) out.push("end date");
+    return out;
+  }, [project, name, code, client, description, status, location, lat, lng, radius, noLimit, startDate, endDate]);
 
   function submit() {
-    if (!name.trim() || !code.trim()) return;
+    if (!valid || !name.trim() || !code.trim()) return;
     const onSuccess = () => onOpenChange(false);
 
     if (project) {
@@ -601,6 +666,8 @@ function ProjectFormDialog({
           lat,
           lng,
           radiusM: noLimit ? 0 : radius,
+          startDate: startDate || null,
+          endDate: endDate || null,
         },
         { onSuccess },
       );
@@ -628,17 +695,64 @@ function ProjectFormDialog({
       <DialogContent className="scroll-thin max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Edit Project" : "Create New Project"}</DialogTitle>
+          {isEdit && (
+            <p className="text-xs text-muted-foreground">
+              Changes apply to the geofence immediately — employees already checked
+              in keep their existing record.
+            </p>
+          )}
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div>
             <Label>Project Name *</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Dubai Home Technical" className="mt-1" />
+            <Input
+              value={name}
+              onChange={(e) => touch(setName)(e.target.value)}
+              placeholder="Dubai Home Technical"
+              className="mt-1"
+              aria-invalid={!!errors.name}
+            />
+            {errors.name && <FieldError>{errors.name}</FieldError>}
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div><Label>Client</Label><Input value={client} onChange={(e) => setClient(e.target.value)} placeholder="Client name" className="mt-1" /></div>
-            <div><Label>Project Code *</Label><Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="DHT-001" className="mt-1" /></div>
+            <div>
+              <Label>Client</Label>
+              <Input value={client} onChange={(e) => touch(setClient)(e.target.value)} placeholder="Client name" className="mt-1" />
+            </div>
+            <div>
+              <Label>Project Code *</Label>
+              <Input
+                value={code}
+                onChange={(e) => touch(setCode)(e.target.value.toUpperCase())}
+                placeholder="DHT-001"
+                className="mt-1"
+                aria-invalid={!!errors.code}
+              />
+              {errors.code && <FieldError>{errors.code}</FieldError>}
+            </div>
           </div>
-          <div><Label>Description</Label><Textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief project description" className="mt-1" /></div>
+          <div>
+            <Label>Description</Label>
+            <Textarea rows={2} value={description} onChange={(e) => touch(setDescription)(e.target.value)} placeholder="Brief project description" className="mt-1" />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Start Date</Label>
+              <Input type="date" value={startDate ?? ""} onChange={(e) => touch(setStartDate)(e.target.value)} className="mt-1" />
+            </div>
+            <div>
+              <Label>End Date</Label>
+              <Input
+                type="date"
+                value={endDate ?? ""}
+                onChange={(e) => touch(setEndDate)(e.target.value)}
+                className="mt-1"
+                aria-invalid={!!errors.endDate}
+              />
+              {errors.endDate && <FieldError>{errors.endDate}</FieldError>}
+            </div>
+          </div>
 
           {/* Location — search by name + interactive map + radius (all in one component) */}
           <div>
@@ -646,10 +760,11 @@ function ProjectFormDialog({
             <p className="mb-2 text-xs text-muted-foreground">Search by name or click on map to set coordinates. Location name auto-fills from selection.</p>
             <Input
               value={location}
-              onChange={(e) => setLocation(e.target.value)}
+              onChange={(e) => touch(setLocation)(e.target.value)}
               placeholder="Auto-filled from map search, or type manually"
               className="mb-2"
             />
+            {errors.radius && <FieldError>{errors.radius}</FieldError>}
             <MapLocationPicker
               lat={lat}
               lng={lng}
@@ -658,10 +773,20 @@ function ProjectFormDialog({
               onLocationChange={(newLat, newLng) => {
                 setLat(newLat.toFixed(6));
                 setLng(newLng.toFixed(6));
+                setDirty(true);
               }}
-              onLocationNameChange={(name) => setLocation(name)}
-              onRadiusChange={(r) => setRadius(r)}
-              onNoLimitChange={(v) => setNoLimit(v)}
+              onLocationNameChange={(name) => {
+                setLocation(name);
+                setDirty(true);
+              }}
+              onRadiusChange={(r) => {
+                setRadius(r);
+                setDirty(true);
+              }}
+              onNoLimitChange={(v) => {
+                setNoLimit(v);
+                setDirty(true);
+              }}
             />
           </div>
 
@@ -669,17 +794,31 @@ function ProjectFormDialog({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label>Latitude</Label>
-              <Input value={lat} onChange={(e) => setLat(e.target.value)} placeholder="25.2048" className="mt-1 font-mono text-xs" />
+              <Input
+                value={lat}
+                onChange={(e) => touch(setLat)(e.target.value)}
+                placeholder="25.2048"
+                className="mt-1 font-mono text-xs"
+                aria-invalid={!!errors.lat}
+              />
+              {errors.lat && <FieldError>{errors.lat}</FieldError>}
             </div>
             <div>
               <Label>Longitude</Label>
-              <Input value={lng} onChange={(e) => setLng(e.target.value)} placeholder="55.2708" className="mt-1 font-mono text-xs" />
+              <Input
+                value={lng}
+                onChange={(e) => touch(setLng)(e.target.value)}
+                placeholder="55.2708"
+                className="mt-1 font-mono text-xs"
+                aria-invalid={!!errors.lng}
+              />
+              {errors.lng && <FieldError>{errors.lng}</FieldError>}
             </div>
           </div>
 
           <div>
             <Label>Status</Label>
-            <Select value={status} onValueChange={setStatus}>
+            <Select value={status} onValueChange={touch(setStatus)}>
               <SelectTrigger className="mt-1 capitalize"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="active">Active</SelectItem>
@@ -687,11 +826,33 @@ function ProjectFormDialog({
                 <SelectItem value="completed">Completed</SelectItem>
               </SelectContent>
             </Select>
+            {isEdit && project && status !== project.status && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                {status === "paused"
+                  ? "Paused projects block new check-ins from employees assigned to them."
+                  : status === "completed"
+                    ? "Completed projects stop accepting attendance and read as historical."
+                    : "Active projects accept check-ins as normal."}
+              </p>
+            )}
           </div>
+
+          {/* Spells out exactly what will change — the difference between an admin
+              believing a silent failure and knowing their edit landed. */}
+          {isEdit && changes.length > 0 && (
+            <div className="rounded-lg border border-border bg-muted/30 p-3">
+              <p className="text-xs font-medium text-navy">
+                {changes.length} field{changes.length === 1 ? "" : "s"} will change
+              </p>
+              <p className="mt-1 text-xs capitalize text-muted-foreground">
+                {changes.join(", ")}
+              </p>
+            </div>
+          )}
         </div>
         <DialogFooter>
           <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-          <Button onClick={submit} disabled={pending || !name.trim() || !code.trim()}>
+          <Button onClick={submit} disabled={pending || !valid || (isEdit && !dirty)}>
             {pending
               ? isEdit ? "Saving…" : "Creating…"
               : isEdit ? "Save Changes" : "Create Project"}
