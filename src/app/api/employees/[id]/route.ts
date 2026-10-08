@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { writeFileSync, mkdirSync, unlinkSync, existsSync } from "fs";
+import { join } from "path";
 
 // PATCH /api/employees/:id — update employee fields + optional password reset
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -44,13 +46,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const hashedPassword = await bcrypt.hash(body.password, 10);
 
     if (emp.user) {
-      // Update existing user's password
       await db.user.update({
         where: { id: emp.user.id },
         data: { password: hashedPassword },
       });
     } else {
-      // Create user account if it doesn't exist
       await db.user.create({
         data: {
           email: emp.email || `${emp.firstName.toLowerCase()}.${emp.lastName.toLowerCase()}@worktrack.io`,
@@ -67,12 +67,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   // Update project assignments if provided
   if (body.projectIds !== undefined) {
-    // Remove all existing assignments
     await db.assignment.updateMany({
       where: { employeeId: id },
       data: { status: "REMOVED", removedAt: new Date() },
     });
-    // Create new assignments
     if (body.projectIds.length > 0) {
       for (const pid of body.projectIds) {
         await db.assignment.upsert({
@@ -90,7 +88,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   });
 }
 
-// DELETE /api/employees/:id — soft delete (deactivate)
+// DELETE /api/employees/:id — PERMANENT delete with ALL related records
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await getServerSession(authOptions);
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -101,13 +99,91 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     return NextResponse.json({ error: "Employee not found" }, { status: 404 });
   }
 
-  // Soft delete — set status to INACTIVE
-  await db.employee.update({ where: { id }, data: { status: "INACTIVE" } });
-  // Also deactivate user account
-  await db.user.updateMany({
+  // Get all attendance records for this employee (to delete photos from disk)
+  const attendanceRecords = await db.attendance.findMany({
     where: { employeeId: id },
-    data: { status: "INACTIVE" },
+    select: { id: true },
   });
 
-  return NextResponse.json({ success: true, message: "Employee deactivated" });
+  // Get all photo file paths to delete from disk
+  const photos = await db.attendancePhoto.findMany({
+    where: { attendanceId: { in: attendanceRecords.map((a) => a.id) } },
+    select: { storageKey: true },
+  });
+
+  // Delete photo files from disk
+  for (const photo of photos) {
+    try {
+      const filePath = join(process.cwd(), "public", photo.storageKey);
+      if (existsSync(filePath)) {
+        unlinkSync(filePath);
+      }
+    } catch {
+      // ignore file deletion errors
+    }
+  }
+
+  // Delete all related records in dependency order (children first)
+  // 1. Attendance locations (GPS trail)
+  const locResult = await db.attendanceLocation.deleteMany({
+    where: { attendanceId: { in: attendanceRecords.map((a) => a.id) } },
+  });
+
+  // 2. Attendance photos (DB records)
+  const photoResult = await db.attendancePhoto.deleteMany({
+    where: { attendanceId: { in: attendanceRecords.map((a) => a.id) } },
+  });
+
+  // 3. Audit logs for this employee's attendance
+  await db.auditLog.deleteMany({
+    where: { entity: "attendance", entityId: { in: attendanceRecords.map((a) => a.id) } },
+  });
+
+  // 4. Attendance records
+  const attResult = await db.attendance.deleteMany({
+    where: { employeeId: id },
+  });
+
+  // 5. Leave requests
+  const leaveResult = await db.leaveRequest.deleteMany({
+    where: { employeeId: id },
+  });
+
+  // 6. Assignments (project assignments)
+  const assignResult = await db.assignment.deleteMany({
+    where: { employeeId: id },
+  });
+
+  // 7. Devices
+  const deviceResult = await db.device.deleteMany({
+    where: { employeeId: id },
+  });
+
+  // 8. Refresh tokens for the linked user
+  await db.refreshToken.deleteMany({
+    where: { user: { employeeId: id } },
+  });
+
+  // 9. User account (login credentials)
+  const userResult = await db.user.deleteMany({
+    where: { employeeId: id },
+  });
+
+  // 10. Finally, delete the employee
+  await db.employee.delete({ where: { id } });
+
+  return NextResponse.json({
+    success: true,
+    message: "Employee permanently deleted with all records",
+    deleted: {
+      attendance: attResult.count,
+      attendancePhotos: photoResult.count,
+      attendanceLocations: locResult.count,
+      leaveRequests: leaveResult.count,
+      assignments: assignResult.count,
+      devices: deviceResult.count,
+      userAccounts: userResult.count,
+      photoFiles: photos.length,
+    },
+  });
 }

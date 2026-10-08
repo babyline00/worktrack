@@ -69,6 +69,7 @@ export function LiveAttendancePage() {
   const [project, setProject] = useState("All Projects");
   const [status, setStatus] = useState("All Status");
   const [lastUpdate, setLastUpdate] = useState(0);
+  const [showLiveMap, setShowLiveMap] = useState(false);
 
   const onUpdate = useCallback(() => {
     refetch();
