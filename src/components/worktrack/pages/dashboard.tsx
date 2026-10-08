@@ -10,7 +10,6 @@ import {
   RefreshCw,
   Download,
   ArrowRight,
-  MapPin,
 } from "lucide-react";
 import { useState, useCallback, useEffect } from "react";
 import {
@@ -24,7 +23,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { useDashboard, useProjects } from "@/lib/hooks";
+import { useDashboard } from "@/lib/hooks";
 import { useApp } from "@/lib/store";
 import { Avatar, Card, PageHeader, SectionTitle, StatusPill } from "../ui";
 import { Button } from "@/components/ui/button";
@@ -45,8 +44,8 @@ const TONE_STYLES: Record<string, { bg: string; text: string }> = {
 export function DashboardHome() {
   const { setPage, setDrawerEmployee } = useApp();
   const [trendTab, setTrendTab] = useState<"7d" | "30d" | "3m">("7d");
-  const { data, isLoading, refetch, isFetching } = useDashboard();
-  const { data: projData } = useProjects();
+  const trendDays = trendTab === "3m" ? 90 : trendTab === "30d" ? 30 : 7;
+  const { data, isLoading, refetch, isFetching } = useDashboard(trendDays);
   const [lastUpdate, setLastUpdate] = useState(0);
 
   // Real-time: refresh dashboard on incoming events
@@ -90,13 +89,12 @@ export function DashboardHome() {
 
   const liveEmployees = data.liveAttendance;
   const projectPerf = data.projectPerformance;
-  const projects = projData?.projects ?? [];
 
   return (
     <div className="space-y-6 fade-in">
       <PageHeader
         title="Dashboard"
-        date={`Tuesday, October 6, 2026 • ${connected ? "🔴 Live" : "Offline"}`}
+        date={`${new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })} • ${connected ? "🔴 Live" : "Offline"}`}
         actions={
           <>
             <span className="hidden text-xs text-muted-foreground sm:inline">
@@ -115,13 +113,22 @@ export function DashboardHome() {
             </Button>
             <Button
               size="sm"
-              onClick={() =>
-                toast.success("Report exported", {
-                  description: "Today's dashboard report downloaded as PDF.",
-                })
-              }
+              onClick={() => {
+                // This used to claim a PDF had downloaded while doing nothing.
+                // Today's daily-attendance report is the closest equivalent.
+                const today = new Date();
+                const day = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+                const a = document.createElement("a");
+                a.href = `/api/reports?type=daily&from=${day}&to=${day}&format=csv`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                toast.success("Today's attendance exported", {
+                  description: "Downloaded as CSV",
+                });
+              }}
             >
-              <Download size={14} className="mr-2" /> Export Report
+              <Download size={14} className="mr-2" /> Export Today
             </Button>
           </>
         }
@@ -196,7 +203,7 @@ export function DashboardHome() {
                     <tr
                       key={e.id}
                       className="cursor-pointer border-b border-border/60 transition hover:bg-muted/50"
-                      onClick={() => setDrawerEmployee(e.id)}
+                      onClick={() => setDrawerEmployee(e.employeeRowId)}
                     >
                       <td className="py-3 pr-3">
                         <div className="flex items-center gap-2.5">
@@ -261,12 +268,18 @@ export function DashboardHome() {
             right={
               <Tabs value={trendTab} onValueChange={(v) => setTrendTab(v as any)}>
                 <TabsList className="h-8">
-                  <TabsTrigger value="7d" className="text-xs">7 Days</TabsTrigger>
+                  {[
+                    { v: "7d", label: "7 Days", days: 7 as const },
+                    { v: "30d", label: "30 Days", days: 30 as const },
+                    { v: "3m", label: "3 Months", days: 90 as const },
+                  ].map((t) => (
+                    <TabsTrigger key={t.v} value={t.v} className="text-xs">{t.label}</TabsTrigger>
+                  ))}
                 </TabsList>
               </Tabs>
             }
           >
-            Attendance Trend (Last 7 Days)
+            {`Attendance Trend (Last ${trendDays === 7 ? "7 Days" : trendDays === 30 ? "30 Days" : "3 Months"})`}
           </SectionTitle>
           <div className="h-56">
             <ResponsiveContainer width="100%" height="100%">
@@ -301,11 +314,14 @@ export function DashboardHome() {
               <button
                 key={a.id}
                 onClick={() => {
-                  if (a.employee) {
+                  if (a.employeeRowId) {
                     setPage("live");
-                    // try to find employee by first name
-                    const emp = liveEmployees.find((e: any) => e.employeeName?.startsWith(a.employee));
-                    if (emp) setDrawerEmployee(emp.id);
+                    // Use the id the API supplied. This used to match on the
+                    // first name against a 10-row slice, which failed for most
+                    // alerts and then left the drawer closed.
+                    setDrawerEmployee(a.employeeRowId);
+                  } else if (a.employee) {
+                    setPage("live");
                   } else {
                     setPage("attendance");
                   }

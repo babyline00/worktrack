@@ -24,14 +24,18 @@ export async function GET(req: Request) {
     where.attendanceDate = today;
   }
 
+  const limitParam = Number(url.searchParams.get("limit"));
+  const limit = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(limitParam, 500) : undefined;
+
   const records = await db.attendance.findMany({
     where,
+    take: limit,
     include: {
       employee: true,
       project: true,
       photos: true,
     },
-    orderBy: { attendanceDate: "desc" },
+    orderBy: [{ attendanceDate: "desc" }, { checkIn: "desc" }],
   });
 
   const rows = records.map((r) => {
@@ -54,7 +58,11 @@ export async function GET(req: Request) {
     return {
       id: r.id,
       date: r.attendanceDate.toLocaleDateString("en-US", { day: "2-digit", month: "short" }),
-      employeeId: r.employee.empId,
+      // Employee row id, so callers can match it against the session's
+      // employeeId. Previously this was the human-facing empId, which can never
+      // equal that cuid and made the employee portal's history always empty.
+      employeeId: r.employeeId,
+      empId: r.employee.empId,
       employeeName: `${r.employee.firstName} ${r.employee.lastName}`,
       employeeInitials: (r.employee.firstName[0] ?? "") + (r.employee.lastName[0] ?? ""),
       avatarColor: r.employee.avatarColor,
@@ -69,6 +77,7 @@ export async function GET(req: Request) {
       workingMinutes: r.workingMins,
       hoursMins: formatMins(r.workingMins),
       lateMinutes: r.lateMins,
+      lateMins: r.lateMins,
       status: uiStatus,
       verification: r.verificationStatus.toLowerCase(),
       location: r.checkInLocation ?? "—",

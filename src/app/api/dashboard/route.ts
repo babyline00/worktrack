@@ -4,18 +4,26 @@ import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Cache } from "@/lib/cache";
 
-export async function GET() {
+export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const companyId = (session.user as any).companyId;
 
-  // Try cache first (15 second TTL for dashboard)
-  const cacheKey = `dashboard:${companyId}`;
-  const cached = await Cache.get(cacheKey);
-  if (cached) return NextResponse.json(cached);
+  const url = new URL(req.url);
+  const trendDaysParam = Number(url.searchParams.get("trendDays")) || 7;
+  const clampedDays: 7 | 30 | 90 = ([7, 30, 90] as const).includes(trendDaysParam as 7 | 30 | 90)
+    ? (trendDaysParam as 7 | 30 | 90)
+    : 7;
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+
+  // Try cache first (15 second TTL for dashboard). The day is part of the key:
+  // without it, a dashboard opened after midnight kept serving yesterday's
+  // numbers until the TTL entries expired on their own.
+  const cacheKey = `dashboard:${companyId}:${today.toDateString()}:trend${clampedDays}`;
+  const cached = await Cache.get(cacheKey);
+  if (cached) return NextResponse.json(cached);
 
   const activeEmployees = await db.employee.count({ where: { companyId, status: "ACTIVE" } });
 
@@ -63,16 +71,24 @@ export async function GET() {
     { name: "Absent", value: absent, color: "#dc2626" },
   ];
 
-  // Attendance trend
+  // Attendance trend. The range is selectable, so the API produces 7, 30 or
+  // 90 points rather than always the same seven days.
   const trend: { label: string; value: number }[] = [];
-  for (let i = 6; i >= 0; i--) {
+  for (let i = clampedDays - 1; i >= 0; i--) {
     const d = new Date(today);
     d.setDate(d.getDate() - i);
     const dayRecords = await db.attendance.count({
       where: { attendanceDate: d, employee: { companyId, status: "ACTIVE" }, attendanceStatus: { in: ["PRESENT", "LATE"] } },
     });
+    // Month granularity for the long ranges, so 90 points stay readable.
+    const label =
+      clampedDays <= 7
+        ? d.toLocaleDateString("en-US", { weekday: "short" })
+        : clampedDays === 30
+          ? d.toLocaleDateString("en-US", { day: "numeric" })
+          : d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
     trend.push({
-      label: d.toLocaleDateString("en-US", { weekday: "short" }),
+      label,
       value: activeEmployees > 0 ? Math.round((dayRecords / activeEmployees) * 100) : 0,
     });
   }
@@ -99,6 +115,10 @@ export async function GET() {
       const lng = latestLoc?.longitude ?? a.checkInLng ?? 0;
       return {
         id: a.id,
+        // The Live page resolves its drawer against Employee rows, so the
+        // dashboard has to hand over the Employee id. Passing the Attendance id
+        // (a cuid too, so never equal) silently opened nothing.
+        employeeRowId: a.employeeId,
         attendanceId: a.id,
         employeeId: a.employee.empId,
         employeeName: `${a.employee.firstName} ${a.employee.lastName}`,
@@ -109,7 +129,7 @@ export async function GET() {
         projectCoords: a.project ? { lat: a.project.lat, lng: a.project.lng } : null,
         projectRadius: a.project?.radiusM ?? 200,
         checkIn: a.checkIn?.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }) ?? "—",
-        status: "working",
+        status: a.sessionStatus === "WORKING" ? "working" : "checked_out",
         location: a.checkInLocation ?? "—",
         // REAL GPS coordinates
         coords: { lat, lng },
@@ -136,6 +156,8 @@ export async function GET() {
       title: `${a.employee.firstName} checked in ${a.lateMins} min late`,
       description: `${a.project?.name ?? "—"} • ${a.checkIn?.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }) ?? "—"}`,
       employee: a.employee.firstName,
+      employeeRowId: a.employeeId,
+      attendanceId: a.id,
     });
   }
 
@@ -151,7 +173,7 @@ export async function GET() {
   const outsideGeofence = presentRecords.filter((a) => !a.insideGeofence && a.sessionStatus === "WORKING");
   if (outsideGeofence.length > 0) {
     const first = outsideGeofence[0];
-    alerts.push({ id: `al-geofence-${first.id}`, severity: "danger", title: `${first.employee.firstName} is outside project geofence`, description: `Currently ${first.distanceFromProject}m away from ${first.project?.name ?? "project"}`, employee: first.employee.firstName });
+    alerts.push({ id: `al-geofence-${first.id}`, severity: "danger", title: `${first.employee.firstName} is outside project geofence`, description: `Currently ${first.distanceFromProject}m away from ${first.project?.name ?? "project"}`, employee: first.employee.firstName, employeeRowId: first.employeeId });
   }
 
   const missingPhotos = presentRecords.filter((a) => !a.checkInPhotoId);

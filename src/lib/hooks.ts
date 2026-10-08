@@ -137,11 +137,11 @@ export interface DashboardData {
 }
 
 // ============= Hooks =============
-export function useDashboard() {
+export function useDashboard(trendDays?: 7 | 30 | 90) {
   return useQuery<DashboardData>({
-    queryKey: ["dashboard"],
+    queryKey: ["dashboard", trendDays ?? 7],
     queryFn: async () => {
-      const res = await fetch("/api/dashboard");
+      const res = await fetch(`/api/dashboard?trendDays=${trendDays ?? 7}`);
       if (!res.ok) throw new Error("Failed to load dashboard");
       return res.json();
     },
@@ -633,10 +633,12 @@ export function useMyAttendance(employeeId?: string) {
   return useQuery({
     queryKey: ["employee-attendance", employeeId],
     queryFn: async () => {
-      const res = await fetch("/api/attendance");
+      // Filtered server-side. This used to download the whole company's
+      // attendance and filter in the browser, which both exposed every
+      // employee's records to an employee session and matched nothing anyway.
+      const res = await fetch(`/api/attendance?employeeId=${encodeURIComponent(employeeId ?? "")}&limit=100`);
       if (!res.ok) throw new Error("Failed");
-      const data = await res.json();
-      return data.attendance.filter((a: AttendanceRow) => a.employeeId === employeeId);
+      return res.json();
     },
     enabled: !!employeeId,
   });
