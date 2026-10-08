@@ -242,6 +242,28 @@ class _SelfieCaptureScreenState extends State<SelfieCaptureScreen> {
 
     if (!mounted) return;
     if (success) {
+      // The server flags a check-out performed outside the project radius and
+      // returns a message for the employee. Show it before unwinding, otherwise
+      // the FLAGGED record would only ever surface to an admin.
+      final warning = att.geofenceWarning;
+      if (!widget._isCheckIn && warning != null && warning.isNotEmpty) {
+        await showDialog<void>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            icon: const Icon(Icons.warning_amber_rounded,
+                color: AppColors.warning, size: 32),
+            title: const Text('Checked out outside project area'),
+            content: Text(warning, style: const TextStyle(fontSize: 14)),
+            actions: [
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+      if (!mounted) return;
       // Pop `true` so the caller can unwind to the dashboard.
       Navigator.pop(context, true);
     } else {

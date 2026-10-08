@@ -361,7 +361,10 @@ model AuditLog {
 model RefreshToken {
   id        String   @id @default(cuid())
   userId    String
-  token     String   @unique
+  // Explicit width: a bare `String @unique` becomes VARCHAR(191) on MySQL,
+  // which is shorter than a JWT (~440 chars), so every refresh-token insert
+  // failed with "value too long". 768 is the utf8mb4 unique-index ceiling.
+  token     String   @unique @db.VarChar(768)
   deviceId  String?
   expiresAt DateTime
   revokedAt DateTime?
