@@ -384,13 +384,13 @@ export function MapLocationPicker({
         {!noLimit ? (
           <>
             <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
-              <span>{radius}m</span>
+              <span>{radius >= 1000 ? `${(radius / 1000).toFixed(1)}km` : `${radius}m`}</span>
               <span>{(radius * 3.14159 * 2 / 1000).toFixed(2)} km circumference</span>
             </div>
             <input
               type="range"
               min="50"
-              max="2000"
+              max="8000"
               step="50"
               value={radius}
               onChange={(e) => onRadiusChange?.(parseInt(e.target.value))}
@@ -398,9 +398,9 @@ export function MapLocationPicker({
             />
             <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
               <span>50m</span>
-              <span>500m</span>
-              <span>1km</span>
               <span>2km</span>
+              <span>5km</span>
+              <span>8km (~50km circ.)</span>
             </div>
           </>
         ) : (
