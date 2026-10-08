@@ -277,14 +277,24 @@ export function useDeleteEmployee() {
   return useMutation({
     mutationFn: async (id: string) => {
       const res = await fetch(`/api/employees/${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("Failed to delete employee");
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Failed to delete employee");
+      }
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["employees"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
-      toast.success("Employee deleted");
+      qc.invalidateQueries({ queryKey: ["attendance"] });
+      const deleted = data?.deleted;
+      toast.success("Employee permanently deleted", {
+        description: deleted
+          ? `${deleted.attendance} attendance, ${deleted.attendancePhotos} photos, ${deleted.leaveRequests} leaves, ${deleted.assignments} assignments removed`
+          : "All related records removed",
+      });
     },
+    onError: (e: any) => toast.error(e.message ?? "Failed to delete employee"),
   });
 }
 

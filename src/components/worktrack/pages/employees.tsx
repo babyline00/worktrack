@@ -590,9 +590,18 @@ function DeleteEmployeeDialog({ id, onClose }: { id: string | null; onClose: () 
     <AlertDialog open={!!id} onOpenChange={(o) => !o && onClose()}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Delete Employee?</AlertDialogTitle>
+          <AlertDialogTitle>⚠ Permanently Delete Employee?</AlertDialogTitle>
           <AlertDialogDescription>
-            Are you sure you want to delete this employee? This action cannot be undone and will remove all associated records.
+            This will <strong>permanently delete</strong> the employee and ALL related data:
+            <br /><br />
+            • All attendance records (check-in/out history)<br />
+            • All attendance photos (selfie images)<br />
+            • All GPS location trail data<br />
+            • All leave requests<br />
+            • All project assignments<br />
+            • Login account & credentials<br />
+            <br />
+            <strong className="text-danger">This action CANNOT be undone.</strong>
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -601,7 +610,7 @@ function DeleteEmployeeDialog({ id, onClose }: { id: string | null; onClose: () 
             className="bg-danger text-white hover:bg-danger/90"
             onClick={() => { if (id) deleteEmployee.mutate(id, { onSuccess: onClose }); }}
           >
-            Delete Employee
+            Yes, Delete Everything
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
