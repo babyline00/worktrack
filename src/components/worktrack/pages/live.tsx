@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback, useEffect } from "react";
 import {
   RefreshCw,
   Map as MapIcon,
@@ -14,7 +14,7 @@ import {
   User as UserIcon,
   ImageOff,
 } from "lucide-react";
-import { useEmployees, useDashboard, type AttendanceLeg } from "@/lib/hooks";
+import { useEmployees, useDashboard, useProjects, type AttendanceLeg } from "@/lib/hooks";
 import { useApp } from "@/lib/store";
 import {
   Avatar,
@@ -43,13 +43,9 @@ import { cn, attendancePhotoUrl } from "@/lib/utils";
 import { toast } from "sonner";
 import { useRealtimeUpdates } from "@/lib/realtime";
 
-const PROJECT_OPTIONS = [
-  "All Projects",
-  "Dubai Home Technical",
-  "ABC Construction",
-  "Client XYZ",
-  "Marina Maintenance",
-];
+/** Sentinel for "no project filter". Not a project name — real names come
+ *  from the database below. */
+const ALL_PROJECTS = "All Projects";
 
 const STATUS_OPTIONS = [
   "All Status",
@@ -65,8 +61,17 @@ export function LiveAttendancePage() {
   const { drawerEmployeeId, setDrawerEmployee, liveMapMode, setLiveMapMode } = useApp();
   const { data: empData, isLoading, refetch, isFetching } = useEmployees();
   const { data: dashData, refetch: refetchDash } = useDashboard();
+  // Real project names from the database. This replaces a hardcoded list that
+  // named projects which never existed ("Dubai Home Technical", "Client XYZ")
+  // and, worse, could never match the `e.project` strings it was compared
+  // against — so selecting any project always produced an empty table.
+  const { data: projData } = useProjects();
   const [query, setQuery] = useState("");
-  const [project, setProject] = useState("All Projects");
+  // The selected project is held by id, not by name. Employee rows carry a
+  // project *name*, so a name-keyed filter silently stopped matching the
+  // moment two projects shared a name — and could not distinguish a project
+  // that had been renamed.
+  const [projectId, setProjectId] = useState<string>(ALL_PROJECTS);
   const [status, setStatus] = useState("All Status");
   const [lastUpdate, setLastUpdate] = useState(0);
   const [showLiveMap, setShowLiveMap] = useState(false);
@@ -79,16 +84,40 @@ export function LiveAttendancePage() {
   const connected = useRealtimeUpdates("live-attendance", onUpdate);
 
   const employees = empData?.employees ?? [];
+  const projects = projData?.projects ?? [];
+
+  // Projects that actually have someone assigned to them, ordered as returned.
+  // Listing every project would fill the dropdown with sites nobody works at,
+  // which reads as "the filter is broken" rather than "no staff there yet".
+  const projectOptions = useMemo(
+    () => projects.filter((p) => employees.some((e) => e.projectIds?.includes(p.id))),
+    [projects, employees],
+  );
+
+  const selectedProjectName = useMemo(
+    () => projects.find((p) => p.id === projectId)?.name,
+    [projects, projectId],
+  );
+
+  // A renamed or deleted project must not leave the table permanently empty.
+  const projectFilterStale =
+    projectId !== ALL_PROJECTS && !!projects.length && !projects.some((p) => p.id === projectId);
+
+  useEffect(() => {
+    if (projectFilterStale) setProjectId(ALL_PROJECTS);
+  }, [projectFilterStale]);
 
   const filtered = useMemo(() => {
     return employees.filter((e) => {
       const q = query.toLowerCase();
       const matchQuery = !q || `${e.firstName} ${e.lastName}`.toLowerCase().includes(q) || e.empId.includes(q) || e.project.toLowerCase().includes(q);
-      const matchProj = project === "All Projects" || e.project === project;
+      // Match on the assignment id, not the display name: an employee can hold
+      // several assignments and `project` only shows the first one.
+      const matchProj = projectId === ALL_PROJECTS || !!e.projectIds?.includes(projectId);
       const matchStatus = status === "All Status" || e.todaysStatus === status;
       return matchQuery && matchProj && matchStatus;
     });
-  }, [employees, query, project, status]);
+  }, [employees, query, projectId, status]);
 
   const drawerEmp = employees.find((e) => e.id === drawerEmployeeId);
 
@@ -142,10 +171,21 @@ export function LiveAttendancePage() {
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input placeholder="Search employee..." value={query} onChange={(e) => setQuery(e.target.value)} className="pl-9" />
           </div>
-          <Select value={project} onValueChange={setProject}>
-            <SelectTrigger className="h-9 w-[170px]"><SelectValue /></SelectTrigger>
+          <Select value={projectId} onValueChange={setProjectId}>
+            <SelectTrigger className="h-9 w-[190px]"><SelectValue /></SelectTrigger>
             <SelectContent>
-              {PROJECT_OPTIONS.map((p) => (<SelectItem key={p} value={p}>{p}</SelectItem>))}
+              <SelectItem value={ALL_PROJECTS}>All Projects</SelectItem>
+              {projectOptions.map((p) => (
+                <SelectItem key={p.id} value={p.id}>
+                  {p.name}
+                  <span className="ml-2 text-xs text-muted-foreground">{p.code}</span>
+                </SelectItem>
+              ))}
+              {projectOptions.length === 0 && (
+                <SelectItem value="none" disabled>
+                  No projects with assigned staff
+                </SelectItem>
+              )}
             </SelectContent>
           </Select>
           <Select value={status} onValueChange={setStatus}>
@@ -154,10 +194,15 @@ export function LiveAttendancePage() {
               {STATUS_OPTIONS.map((s) => (<SelectItem key={s} value={s} className="capitalize">{s.replace("_", " ")}</SelectItem>))}
             </SelectContent>
           </Select>
-          {(query || project !== "All Projects" || status !== "All Status") && (
-            <Button variant="ghost" size="sm" onClick={() => { setQuery(""); setProject("All Projects"); setStatus("All Status"); }}>
+          {(query || projectId !== ALL_PROJECTS || status !== "All Status") && (
+            <Button variant="ghost" size="sm" onClick={() => { setQuery(""); setProjectId(ALL_PROJECTS); setStatus("All Status"); }}>
               <X size={14} className="mr-1" /> Clear
             </Button>
+          )}
+          {projectFilterStale && (
+            <p className="w-full text-xs text-muted-foreground">
+              The selected project is no longer available — showing all projects.
+            </p>
           )}
         </div>
       </Card>
@@ -175,6 +220,9 @@ export function LiveAttendancePage() {
             </div>
           </div>
           <div className="p-3">
+            {/* The geofence circle is only meaningful for one project at a time.
+                Without a project selected it would draw every site's radius over
+                the map and misattribute employee positions. */}
             <RealMap
               markers={filtered
                 .filter((e) => e.todaysStatus !== "absent" && e.todaysStatus !== "leave" && e.coords.lat && e.coords.lng)
@@ -188,8 +236,19 @@ export function LiveAttendancePage() {
                   description: `${e.project} • ${e.todaysStatus}`,
                   type: "employee" as const,
                 }))}
+              geofence={
+                projectId !== ALL_PROJECTS
+                  ? (() => {
+                      const p = projects.find((x) => x.id === projectId);
+                      return p && p.coords.lat && p.coords.lng
+                        ? { lat: p.coords.lat, lng: p.coords.lng, radiusM: p.radiusM, name: p.name }
+                        : undefined;
+                    })()
+                  : undefined
+              }
               height={480}
               zoom={11}
+              className="isolate"
             />
           </div>
         </Card>

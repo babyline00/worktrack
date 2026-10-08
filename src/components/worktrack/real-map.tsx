@@ -76,7 +76,19 @@ function MapBridge({ onReady }: any) {
   return null;
 }
 
-export function RealMap({ markers, geofence, height = 480, center, zoom = 12, showControls = true, emptyMessage = "No employees are currently checked in." }: any) {
+/**
+ * Leaflet assigns its own internal z-indexes (tiles 200, markers 600, popups
+ * 700, controls 800). Because those live in the same stacking context as the
+ * surrounding page, markers and popups painted *over* the sidebar, the topbar
+ * and the employee drawer sheet.
+ *
+ * `isolate` on the wrapper creates a stacking context so every one of those
+ * values is contained inside the map box. The explicit `z-0` keeps the map
+ * itself below siblings at higher z-index, instead of relying on source order.
+ */
+const MAP_STACK_CONTEXT = "relative isolate overflow-hidden rounded-lg border border-border bg-muted z-0";
+
+export function RealMap({ markers, geofence, height = 480, center, zoom = 12, showControls = true, emptyMessage = "No employees are currently checked in.", className, style }: any) {
   const [layer, setLayer] = useState("street");
   const [mapInstance, setMapInstance] = useState<any>(null);
   const [loaded, setLoaded] = useState(false);
@@ -124,8 +136,17 @@ export function RealMap({ markers, geofence, height = 480, center, zoom = 12, sh
   const { MapContainer, TileLayer, Marker, Popup, Circle, ScaleControl, ZoomControl } = RL;
 
   return (
-    <div ref={containerRef} style={{ height: typeof height === "number" ? `${height}px` : height, width: "100%" }} className="relative overflow-hidden rounded-lg border border-border bg-muted">
+    <div ref={containerRef} style={{ height: typeof height === "number" ? `${height}px` : height, width: "100%", ...style }} className={cn(MAP_STACK_CONTEXT, className)}>
       <style>{`@keyframes wt-pulse { 0%,100% { transform: scale(1); opacity: 0.3; } 50% { transform: scale(1.4); opacity: 0.1; } }`}</style>
+      {/* Leaflet positions its panes with z-index:200–800 inside this box. The
+          container itself is pinned at 0 so the map never competes with the
+          app's chrome, and the popup pane is nudged above the map's own
+          overlay controls so a marker popup is never clipped behind them. */}
+      <style>{`
+        .leaflet-container { font: inherit; }
+        .leaflet-container .leaflet-popup-pane { z-index: 700; }
+        .leaflet-container .leaflet-control { z-index: 800; }
+      `}</style>
       <MapContainer center={fallbackCenter} zoom={zoom} style={{ height: "100%", width: "100%", background: "#e5e7eb" }} scrollWheelZoom zoomControl={false}>
         <ZoomControl position="topright" />
         <ScaleControl position="bottomright" imperial={false} />
@@ -213,7 +234,7 @@ export function LiveTrailMap({ trail, latestLocation, employeeName, employeeInit
   const { MapContainer, TileLayer, Marker, Popup, Circle, ScaleControl, ZoomControl } = RL;
 
   return (
-    <div ref={containerRef} style={{ height: typeof height === "number" ? `${height}px` : height, width: "100%" }} className="relative overflow-hidden rounded-lg border border-border bg-muted">
+    <div ref={containerRef} style={{ height: typeof height === "number" ? `${height}px` : height, width: "100%" }} className={MAP_STACK_CONTEXT}>
       <style>{`@keyframes wt-pulse { 0%,100% { transform: scale(1); opacity: 0.3; } 50% { transform: scale(1.4); opacity: 0.1; } }`}</style>
       <MapContainer center={fallbackCenter} zoom={15} style={{ height: "100%", width: "100%", background: "#e5e7eb" }} scrollWheelZoom zoomControl={false}>
         <ZoomControl position="topright" />
