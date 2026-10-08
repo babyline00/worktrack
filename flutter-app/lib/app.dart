@@ -2,7 +2,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import 'core/api_client.dart';
 import 'core/theme.dart';
 import 'providers/attendance_provider.dart';
 import 'providers/auth_provider.dart';
@@ -28,13 +27,10 @@ class WorkTrackApp extends StatelessWidget {
       child: MaterialApp(
         title: 'WorkTrack',
         debugShowCheckedModeBanner: false,
-        theme: AppTheme.light(),
+        theme: AppTheme.lightTheme,
+        // SplashScreen restores the persisted session (ApiClient.init + profile)
+        // before routing to the home or login screen.
         home: const SplashScreen(),
-        builder: (context, child) {
-          // Make sure the API client is initialised before any screen runs.
-          ApiClient.instance.init();
-          return child!;
-        },
       ),
     );
   }

@@ -30,11 +30,20 @@ export async function GET(req: Request) {
     });
     if (!employee) throw ERRORS.NOT_FOUND("Employee not found");
 
-    // Today's attendance
-    const todayAttendance = await db.attendance.findFirst({
+    // Today's attendance. An employee can work several sessions in one day, so
+    // all of them are read: the live one drives the timer, and the closed ones
+    // contribute to the day's total.
+    const todaySessions = await db.attendance.findMany({
       where: { employeeId: employee.id, attendanceDate: startOfDay },
+      orderBy: { checkIn: "desc" },
       include: { project: true },
     });
+    const todayAttendance =
+      todaySessions.find((s) => s.checkIn && !s.checkOut) ??
+      todaySessions[0];
+    const closedMinutes = todaySessions
+      .filter((s) => s.checkIn && s.checkOut)
+      .reduce((sum, s) => sum + (s.workingMins ?? 0), 0);
 
     let today: any = {
       date: startOfDay.toISOString().split("T")[0],
@@ -43,6 +52,7 @@ export async function GET(req: Request) {
       checkIn: null,
       checkOut: null,
       workingMinutes: 0,
+      sessionCount: 0,
     };
 
     if (todayAttendance) {
@@ -54,7 +64,11 @@ export async function GET(req: Request) {
           : null,
         checkIn: formatTimeInTimezone(todayAttendance.checkIn, employee.company.timezone),
         checkOut: formatTimeInTimezone(todayAttendance.checkOut, employee.company.timezone),
-        workingMinutes: todayAttendance.workingMins,
+        // Sum of every closed session today. A session that is still open is
+        // excluded because its time is still accruing — the app counts it live
+        // from its check-in timestamp.
+        workingMinutes: closedMinutes,
+        sessionCount: todaySessions.length,
         attendanceId: todayAttendance.id,
         insideGeofence: todayAttendance.insideGeofence,
         verificationStatus: todayAttendance.verificationStatus,

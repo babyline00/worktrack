@@ -31,6 +31,8 @@ class _SplashScreenState extends State<SplashScreen>
     _bootstrap();
   }
 
+  bool _ready = false;
+
   Future<void> _bootstrap() async {
     final auth = context.read<AuthProvider>();
     await Future.wait([
@@ -38,12 +40,7 @@ class _SplashScreenState extends State<SplashScreen>
       Future.delayed(const Duration(milliseconds: 1100)),
     ]);
     if (!mounted) return;
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (_) =>
-            auth.isAuthenticated ? const HomeScreen() : const LoginScreen(),
-      ),
-    );
+    setState(() => _ready = true);
   }
 
   @override
@@ -54,6 +51,13 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   Widget build(BuildContext context) {
+    // Once the splash animation has finished, this screen stays mounted and
+    // swaps its body based on auth state — so a successful login (or logout)
+    // is picked up without relying on the login screen navigating itself.
+    final auth = context.watch<AuthProvider>();
+    if (_ready && auth.isAuthenticated) return const HomeScreen();
+    if (_ready) return const LoginScreen();
+
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(

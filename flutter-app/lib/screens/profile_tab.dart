@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../core/constants.dart';
 import '../providers/auth_provider.dart';
-import 'login_screen.dart';
 
 class ProfileTab extends StatelessWidget {
   const ProfileTab({super.key});
@@ -54,7 +53,11 @@ class ProfileTab extends StatelessWidget {
           ElevatedButton.icon(
             onPressed: () async {
               await auth.logout();
-              if (context.mounted) Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const LoginScreen()), (r) => false);
+              // The splash screen owns the auth-driven routing, so popping back
+              // to the root is enough — it will render the login screen itself.
+              if (context.mounted) {
+                Navigator.of(context).popUntil((r) => r.isFirst);
+              }
             },
             icon: const Icon(Icons.logout),
             label: const Text('Sign Out'),

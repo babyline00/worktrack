@@ -24,8 +24,12 @@ export async function GET(req: Request) {
     });
     if (!emp) throw ERRORS.NOT_FOUND("Employee not found");
 
-    const att = await db.attendance.findFirst({
+    // All of today's sessions. More than one is normal — employees may work
+    // split shifts — so the day's totals are aggregated rather than read off
+    // whichever record happened to come back first.
+    const todaysSessions = await db.attendance.findMany({
       where: { employeeId: emp.id, attendanceDate: startOfDay },
+      orderBy: { checkIn: "desc" },
       include: {
         project: true,
         photos: true,
@@ -33,19 +37,46 @@ export async function GET(req: Request) {
       },
     });
 
-    if (!att) {
+    if (todaysSessions.length === 0) {
       return apiSuccess({
         status: "NOT_STARTED",
         attendance: null,
+        totalWorkingMinutes: 0,
+        sessionCount: 0,
       });
     }
 
+    // The live session drives the timer and the check-out action; when every
+    // session is closed the most recent one stands in for the day.
+    const openSession = todaysSessions.find(
+      (s) => s.checkIn && !s.checkOut,
+    );
+    const att = openSession ?? todaysSessions[0];
+
+    const closedMinutes = todaysSessions
+      .filter((s) => s.checkOut && s.checkIn)
+      .reduce((sum, s) => sum + (s.workingMins ?? 0), 0);
+
     return apiSuccess({
       status: att.sessionStatus,
+      // Day-level totals across every session, so "Total Time" reflects the
+      // whole day rather than just the current or latest session. An open
+      // session contributes 0 here — its duration is still accruing and the
+      // app counts it live from the check-in timestamp.
+      totalWorkingMinutes: closedMinutes,
+      sessionCount: todaysSessions.length,
       attendance: {
         id: att.id,
         project: att.project
-          ? { id: att.project.id, name: att.project.name, code: att.project.code }
+          ? {
+              id: att.project.id,
+              name: att.project.name,
+              code: att.project.code,
+              // Needed by the app to pre-check the geofence locally.
+              latitude: att.project.lat,
+              longitude: att.project.lng,
+              radius: att.project.radiusM,
+            }
           : null,
         checkInAt: att.checkIn?.toISOString() ?? null,
         checkOutAt: att.checkOut?.toISOString() ?? null,

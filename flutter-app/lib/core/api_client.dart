@@ -3,30 +3,53 @@ import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'constants.dart';
 
+/// Error thrown for any failed API call, carrying the server's message.
+class ApiException implements Exception {
+  final String message;
+  final int? statusCode;
+  final String? code;
+
+  const ApiException(this.message, {this.statusCode, this.code});
+
+  @override
+  String toString() => message;
+}
+
 class ApiClient {
   static final ApiClient _instance = ApiClient._internal();
   factory ApiClient() => _instance;
   ApiClient._internal();
 
-  late Dio dio;
+  /// Shared instance used across providers and screens.
+  static ApiClient get instance => _instance;
+
+  late Dio _dio;
   final _storage = const FlutterSecureStorage();
   String? _accessToken;
   String? _refreshToken;
+  Future<void>? _initFuture;
+
+  /// Raw Dio instance. Only available after [init] has completed.
+  Dio get dio => _dio;
 
   String? get accessToken => _accessToken;
 
-  Future<void> init() async {
+  /// Idempotent — repeated calls (e.g. from a widget rebuild) reuse the
+  /// same initialisation instead of rebuilding the client and its interceptor.
+  Future<void> init() => _initFuture ??= _doInit();
+
+  Future<void> _doInit() async {
     _accessToken = await _storage.read(key: 'access_token');
     _refreshToken = await _storage.read(key: 'refresh_token');
 
-    dio = Dio(BaseOptions(
+    _dio = Dio(BaseOptions(
       baseUrl: ApiConstants.baseUrl,
       connectTimeout: ApiConstants.connectTimeout,
       receiveTimeout: ApiConstants.receiveTimeout,
       headers: {'Content-Type': 'application/json'},
     ));
 
-    dio.interceptors.add(InterceptorsWrapper(
+    _dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) {
         if (_accessToken != null) {
           options.headers['Authorization'] = 'Bearer $_accessToken';
@@ -42,7 +65,7 @@ class ApiClient {
             final opts = error.requestOptions;
             opts.headers['Authorization'] = 'Bearer $_accessToken';
             try {
-              final response = await dio.fetch(opts);
+              final response = await _dio.fetch(opts);
               handler.resolve(response);
               return;
             } catch (e) {
@@ -54,6 +77,102 @@ class ApiClient {
         handler.next(error);
       },
     ));
+  }
+
+  /// Performs a GET and returns the unwrapped `data` payload.
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
+    await init();
+    try {
+      final res = await _dio.get<dynamic>(path, queryParameters: query);
+      return _unwrap(res.data);
+    } on DioException catch (e) {
+      throw _toApiException(e);
+    }
+  }
+
+  /// Performs a POST and returns the unwrapped `data` payload.
+  Future<Map<String, dynamic>> post(String path, {Object? data}) async {
+    await init();
+    try {
+      final res = await _dio.post<dynamic>(path, data: data);
+      return _unwrap(res.data);
+    } on DioException catch (e) {
+      throw _toApiException(e);
+    }
+  }
+
+  Future<Map<String, dynamic>> put(String path, {Object? data}) async {
+    await init();
+    try {
+      final res = await _dio.put<dynamic>(path, data: data);
+      return _unwrap(res.data);
+    } on DioException catch (e) {
+      throw _toApiException(e);
+    }
+  }
+
+  Future<Map<String, dynamic>> patch(String path, {Object? data}) async {
+    await init();
+    try {
+      final res = await _dio.patch<dynamic>(path, data: data);
+      return _unwrap(res.data);
+    } on DioException catch (e) {
+      throw _toApiException(e);
+    }
+  }
+
+  Future<Map<String, dynamic>> delete(String path) async {
+    await init();
+    try {
+      final res = await _dio.delete<dynamic>(path);
+      return _unwrap(res.data);
+    } on DioException catch (e) {
+      throw _toApiException(e);
+    }
+  }
+
+  /// Unwraps the API envelope `{ success, data }` / `{ success, error }`.
+  /// Non-object `data` payloads are returned under the `data` key so callers
+  /// can always index into a `Map<String, dynamic>`.
+  Map<String, dynamic> _unwrap(dynamic body) {
+    if (body is! Map) {
+      throw ApiException('Unexpected response from server');
+    }
+    final map = Map<String, dynamic>.from(body);
+    if (map['success'] == true) {
+      final data = map['data'];
+      if (data is Map) return Map<String, dynamic>.from(data);
+      return {'data': data};
+    }
+    final error = map['error'];
+    if (error is Map) {
+      throw ApiException(
+        (error['message'] as String?) ?? 'Request failed',
+        code: error['code'] as String?,
+      );
+    }
+    throw ApiException('Request failed');
+  }
+
+  ApiException _toApiException(DioException e) {
+    final data = e.response?.data;
+    if (data is Map) {
+      final error = data['error'];
+      if (error is Map && error['message'] is String) {
+        return ApiException(
+          error['message'] as String,
+          statusCode: e.response?.statusCode,
+          code: error['code'] as String?,
+        );
+      }
+    }
+    return ApiException(
+      e.response?.statusMessage ?? 'Network error. Please try again.',
+      statusCode: e.response?.statusCode,
+    );
   }
 
   Future<bool> _tryRefresh() async {

@@ -32,15 +32,24 @@ class _DashboardTabState extends State<DashboardTab> {
     final att = context.read<AttendanceProvider>().todayAttendance;
     if (att != null && att.checkInAt != null && att.sessionStatus == 'WORKING') {
       final checkIn = DateTime.tryParse(att.checkInAt!) ?? DateTime.now();
-      _elapsedSeconds = DateTime.now().difference(checkIn).inSeconds;
-      _timer = Timer.periodic(const Duration(seconds: 1), (t) {
+      // Clamp at zero: a server timestamp a few seconds ahead (clock skew, or
+      // a record seeded in the future) would otherwise render a negative timer.
+      _elapsedSeconds = DateTime.now().difference(checkIn).inSeconds.clamp(0, 1 << 31);
+      _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (!mounted) return;
         setState(() => _elapsedSeconds++);
       });
-      // Send location updates every 2 min
-      if (att.attendanceId != null) {
+
+      // Track the session in the background while the dashboard is open:
+      // refresh the fix, then push it so live tracking stays current.
+      if (att.id.isNotEmpty) {
         _locationTimer?.cancel();
         _locationTimer = Timer.periodic(const Duration(minutes: 2), (_) {
-          context.read<AttendanceProvider>().sendLocationUpdate(att.attendanceId!);
+          if (!mounted) return;
+          final provider = context.read<AttendanceProvider>();
+          provider.refreshLocation().then((loc) {
+            if (loc != null) provider.sendLocationUpdate(att.id);
+          });
         });
       }
     }
@@ -72,27 +81,27 @@ class _DashboardTabState extends State<DashboardTab> {
     final h = seconds ~/ 3600;
     final m = (seconds % 3600) ~/ 60;
     final s = seconds % 60;
-    return '${h.toString().padLeft(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}';
+    return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
   }
 
   String _formatMins(int mins) {
     final h = mins ~/ 60;
     final m = mins % 60;
-    return '${h}h ${m.toString().padStart(2, '0')}m';
+    return '${h}h ${m.toString().padLeft(2, '0')}m';
   }
 
-  String _formatDate(DateTime date) {
-    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-    return '${days[date.weekday - 1]}, ${months[date.month - 1]} ${date.day}, ${date.year}';
-  }
-
-  String _formatTime(String? iso) {
+  /// Prefers the API's company-timezone clock string and only falls back to
+  /// re-deriving it from the UTC ISO timestamp.
+  String _formatTime(String? iso, {String? preformatted}) {
+    if (preformatted != null && preformatted.isNotEmpty) return preformatted;
     if (iso == null) return '---';
     try {
-      final dt = DateTime.parse(iso);
-      return '${dt.hour > 12 ? dt.hour - 12 : dt.hour == 0 ? 12 : dt.hour}:${dt.minute.toString().padStart(2, '0')} ${dt.hour >= 12 ? 'PM' : 'AM'}';
-    } catch (_) { return '---'; }
+      final dt = DateTime.parse(iso).toLocal();
+      final h12 = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+      return '$h12:${dt.minute.toString().padLeft(2, '0')} ${dt.hour >= 12 ? 'PM' : 'AM'}';
+    } catch (_) {
+      return '---';
+    }
   }
 
   @override
@@ -104,6 +113,10 @@ class _DashboardTabState extends State<DashboardTab> {
     final isWorking = today != null && today.sessionStatus == 'WORKING';
     final isCheckedOut = today != null && today.sessionStatus == 'COMPLETED';
     final isNotStarted = today == null || today.sessionStatus == 'NOT_STARTED';
+
+    // Minutes already banked from sessions completed earlier today. Added to the
+    // live session so a second check-in does not reset the day's clock.
+    final bankedSeconds = (today?.totalWorkingMinutes ?? 0) * 60;
 
     return Scaffold(
       body: Container(
@@ -168,28 +181,34 @@ class _DashboardTabState extends State<DashboardTab> {
                           isNotStarted: isNotStarted,
                           isWorking: isWorking,
                           isCheckedOut: isCheckedOut,
-                          elapsedSeconds: _elapsedSeconds,
-                          workingMinutes: today?.workingMinutes ?? 0,
+                          // Live session plus everything already banked today,
+                          // so a second session does not restart the clock.
+                          elapsedSeconds: _elapsedSeconds + bankedSeconds,
+                          // Day aggregate across every completed session, not just the latest one.
+                          workingMinutes: today?.totalWorkingMinutes ?? 0,
+                          sessionCount: today?.sessionCount ?? 1,
                         ),
                         const SizedBox(height: 20),
 
-                        // Action button
-                        if (isNotStarted && dashboard != null && dashboard.projects.isNotEmpty)
-                          _ActionButton(
-                            text: 'CHECK IN',
-                            color: AppColors.success,
-                            icon: Icons.play_arrow,
-                            onPressed: () => Navigator.push(context, MaterialPageRoute(
-                              builder: (_) => ProjectSelectionScreen(projects: dashboard.projects),
-                            )),
-                          )
-                        else if (isWorking && today?.attendanceId != null)
+                        // Action button. An employee may work several sessions in one day, so a
+                        // completed day still offers CHECK IN AGAIN rather than
+                        // locking them out until tomorrow.
+                        if (isWorking && today.id.isNotEmpty)
                           _ActionButton(
                             text: 'CHECK OUT',
                             color: AppColors.danger,
                             icon: Icons.stop,
                             onPressed: () => Navigator.push(context, MaterialPageRoute(
-                              builder: (_) => WorkingSessionScreen(attendanceId: today!.attendanceId!),
+                              builder: (_) => WorkingSessionScreen(attendanceId: today.id),
+                            )),
+                          )
+                        else if (dashboard != null && dashboard.projects.isNotEmpty)
+                          _ActionButton(
+                            text: isCheckedOut ? 'CHECK IN AGAIN' : 'CHECK IN',
+                            color: AppColors.success,
+                            icon: Icons.play_arrow,
+                            onPressed: () => Navigator.push(context, MaterialPageRoute(
+                              builder: (_) => ProjectSelectionScreen(projects: dashboard.projects),
                             )),
                           )
                         else if (isCheckedOut)
@@ -210,9 +229,11 @@ class _DashboardTabState extends State<DashboardTab> {
 
                         // Today's Details
                         _DetailsSection(
-                          checkIn: _formatTime(today?.checkInAt),
-                          checkOut: _formatTime(today?.checkOutAt),
-                          workingHours: isWorking ? _formatDuration(_elapsedSeconds) : _formatMins(today?.workingMinutes ?? 0),
+                          checkIn: _formatTime(today?.checkInAt, preformatted: today?.checkInTime),
+                          checkOut: _formatTime(today?.checkOutAt, preformatted: today?.checkOutTime),
+                          workingHours: isWorking
+                              ? _formatDuration(_elapsedSeconds + bankedSeconds)
+                              : _formatMins(today?.totalWorkingMinutes ?? 0),
                         ),
                         const SizedBox(height: 20),
 
@@ -220,9 +241,10 @@ class _DashboardTabState extends State<DashboardTab> {
                         _VerificationSection(
                           isNotStarted: isNotStarted,
                           isWorking: isWorking,
-                          isCheckedOut: isCheckedOut,
-                          checkInTime: _formatTime(today?.checkInAt),
-                          checkOutTime: _formatTime(today?.checkOutAt),
+                          hasCheckInPhoto: (today?.checkInPhoto ?? '')
+                              .isNotEmpty,
+                          checkInTime: _formatTime(today?.checkInAt,
+                              preformatted: today?.checkInTime),
                           insideGeofence: today?.insideGeofence ?? true,
                         ),
                         const SizedBox(height: 20),
@@ -230,6 +252,12 @@ class _DashboardTabState extends State<DashboardTab> {
                         // Geofence indicator
                         if (today != null)
                           _GeofenceIndicator(insideGeofence: today.insideGeofence),
+                        const SizedBox(height: 16),
+
+                        // Live device location
+                        LiveLocationTile(
+                          attendanceId: isWorking ? today.id : null,
+                        ),
                         const SizedBox(height: 32),
                       ],
                     ),
@@ -330,12 +358,16 @@ class _StatusSection extends StatelessWidget {
   final int elapsedSeconds;
   final int workingMinutes;
 
+  /// Sessions completed today — the employee may work more than one.
+  final int sessionCount;
+
   const _StatusSection({
     required this.isNotStarted,
     required this.isWorking,
     required this.isCheckedOut,
     required this.elapsedSeconds,
     required this.workingMinutes,
+    this.sessionCount = 1,
   });
 
   @override
@@ -392,6 +424,23 @@ class _StatusSection extends StatelessWidget {
           )),
           const SizedBox(height: 4),
           Text(timeLabel, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+          // More than one session today (split shifts) — say so, otherwise the
+          // total looks like a single continuous shift.
+          if (sessionCount > 1) ...[
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+              decoration: BoxDecoration(
+                color: statusColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                '$sessionCount sessions today',
+                style: TextStyle(
+                    fontSize: 11, fontWeight: FontWeight.w600, color: statusColor),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -401,13 +450,13 @@ class _StatusSection extends StatelessWidget {
     final h = seconds ~/ 3600;
     final m = (seconds % 3600) ~/ 60;
     final s = seconds % 60;
-    return '${h.toString().padLeft(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}';
+    return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
   }
 
   String _formatMins(int mins) {
     final h = mins ~/ 60;
     final m = mins % 60;
-    return '${h}h ${m.toString().padStart(2, '0')}m';
+    return '${h}h ${m.toString().padLeft(2, '0')}m';
   }
 }
 
@@ -505,19 +554,20 @@ class _DetailRow extends StatelessWidget {
 class _VerificationSection extends StatelessWidget {
   final bool isNotStarted;
   final bool isWorking;
-  final bool isCheckedOut;
-  final String checkInTime;
-  final String checkOutTime;
+  final bool hasCheckInPhoto;
   final bool insideGeofence;
+  final String checkInTime;
 
   const _VerificationSection({
     required this.isNotStarted,
     required this.isWorking,
-    required this.isCheckedOut,
-    required this.checkInTime,
-    required this.checkOutTime,
+    required this.hasCheckInPhoto,
     required this.insideGeofence,
+    required this.checkInTime,
   });
+
+  /// True once a check-in has been recorded for the session.
+  bool get _hasCheckIn => isWorking || !isNotStarted;
 
   @override
   Widget build(BuildContext context) {
@@ -526,29 +576,56 @@ class _VerificationSection extends StatelessWidget {
       children: [
         const Text('Verification', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
         const SizedBox(height: 4),
-        const Text('(Will be captured)', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+        Text(
+          _hasCheckIn ? 'Captured at check-in' : 'Captured when you check in',
+          style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+        ),
         const SizedBox(height: 12),
         Card(
           child: Column(
             children: [
-              _VerifyRow(icon: Icons.camera_alt_outlined, label: 'Photo', status: _status(), isVerified: isWorking || isCheckedOut),
+              _VerifyRow(
+                icon: Icons.camera_alt_outlined,
+                label: 'Photo',
+                status: !_hasCheckIn
+                    ? 'Pending'
+                    : hasCheckInPhoto
+                        ? 'Captured'
+                        : 'Missing',
+                isVerified: hasCheckInPhoto,
+                isError: _hasCheckIn && !hasCheckInPhoto,
+              ),
               const Divider(height: 1, indent: 56),
-              _VerifyRow(icon: Icons.location_on_outlined, label: 'GPS Location', status: _status(), isVerified: isWorking || isCheckedOut),
+              _VerifyRow(
+                icon: Icons.location_on_outlined,
+                label: 'GPS Location',
+                status: !_hasCheckIn
+                    ? 'Pending'
+                    : insideGeofence
+                        ? 'In range'
+                        : 'Out of range',
+                isVerified: _hasCheckIn && insideGeofence,
+                isError: _hasCheckIn && !insideGeofence,
+              ),
               const Divider(height: 1, indent: 56),
-              _VerifyRow(icon: Icons.phone_android_outlined, label: 'Device Info', status: _status(), isVerified: isWorking || isCheckedOut),
+              _VerifyRow(
+                icon: Icons.phone_android_outlined,
+                label: 'Device Info',
+                status: _hasCheckIn ? 'Captured' : 'Pending',
+                isVerified: _hasCheckIn,
+              ),
               const Divider(height: 1, indent: 56),
-              _VerifyRow(icon: Icons.access_time, label: 'Capture Time', status: checkInTime, isVerified: false),
+              _VerifyRow(
+                icon: Icons.access_time,
+                label: 'Capture Time',
+                status: _hasCheckIn ? checkInTime : 'Pending',
+                isVerified: _hasCheckIn,
+              ),
             ],
           ),
         ),
       ],
     );
-  }
-
-  String _status() {
-    if (isCheckedOut) return 'Verified';
-    if (isWorking) return 'Captured';
-    return 'Pending';
   }
 }
 
@@ -557,13 +634,28 @@ class _VerifyRow extends StatelessWidget {
   final String label;
   final String status;
   final bool isVerified;
+  final bool isError;
 
-  const _VerifyRow({required this.icon, required this.label, required this.status, required this.isVerified});
+  const _VerifyRow({
+    required this.icon,
+    required this.label,
+    required this.status,
+    required this.isVerified,
+    this.isError = false,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final statusColor = isVerified ? AppColors.success : AppColors.textMuted;
-    final statusBg = isVerified ? AppColors.successSoft : const Color(0xFFF1F5F9);
+    final statusColor = isVerified
+        ? AppColors.success
+        : isError
+            ? AppColors.danger
+            : AppColors.textMuted;
+    final statusBg = isVerified
+        ? AppColors.successSoft
+        : isError
+            ? AppColors.dangerSoft
+            : const Color(0xFFF1F5F9);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -578,8 +670,10 @@ class _VerifyRow extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (isVerified) Icon(Icons.check, size: 12, color: statusColor),
-                if (isVerified) const SizedBox(width: 4),
+                if (isVerified || isError)
+                  Icon(isError ? Icons.priority_high : Icons.check,
+                      size: 12, color: statusColor),
+                if (isVerified || isError) const SizedBox(width: 4),
                 Text(status, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: statusColor)),
               ],
             ),

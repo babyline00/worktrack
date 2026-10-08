@@ -29,9 +29,20 @@ class ProjectSelectionScreen extends StatelessWidget {
               subtitle: Text('${p.code} • ${p.location ?? "—"}\nGeofence: ${p.radius}m radius', style: const TextStyle(fontSize: 12)),
               isThreeLine: true,
               trailing: const Icon(Icons.chevron_right, color: AppColors.textMuted),
-              onTap: () => Navigator.pushReplacement(context, MaterialPageRoute(
-                builder: (_) => CheckInCameraScreen(project: p),
-              )),
+              onTap: () async {
+                final checkedIn = await Navigator.push<bool>(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => CheckInCameraScreen(project: p),
+                  ),
+                );
+                // Unwind to the dashboard so it refreshes into the working
+                // state. Pushing a fresh HomeScreen would duplicate the
+                // existing tab stack.
+                if (checkedIn == true && context.mounted) {
+                  Navigator.of(context).popUntil((r) => r.isFirst);
+                }
+              },
             ),
           )),
         ],

@@ -151,6 +151,16 @@ async function main() {
   ]);
 
   // 8. Today's attendance with new schema (3 status fields)
+  //
+  // Attendance, leaves and notifications are plain inserts, so clear them first
+  // to keep re-seeding idempotent — otherwise every run stacks another copy of
+  // today on top of the last. Photos and location pings cascade off attendance.
+  await db.attendance.deleteMany({ where: { companyId: company.id } });
+  await db.leaveRequest.deleteMany({
+    where: { employee: { companyId: company.id } },
+  });
+  await db.notification.deleteMany({ where: { companyId: company.id } });
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const shift = await db.shift.findFirst({ where: { companyId: company.id } });
@@ -161,10 +171,24 @@ async function main() {
     const status = statuses[i % statuses.length];
     if (status === "ABSENT" || status === "ON_LEAVE") continue;
 
+    const now = new Date();
     const checkIn = new Date(today);
     checkIn.setHours(9 + (i % 3), (i * 7) % 60, 0, 0);
     const isLate = status === "LATE";
-    const checkOut = i % 8 === 0 ? new Date(checkIn.getTime() + 8 * 60 * 60 * 1000 + 14 * 60 * 1000) : null;
+    let checkOut = i % 8 === 0 ? new Date(checkIn.getTime() + 8 * 60 * 60 * 1000 + 14 * 60 * 1000) : null;
+
+    // `setHours` builds the nominal 9–11 AM start in the host's local timezone.
+    // When seeding runs before that wall-clock time (or before the shift ends)
+    // the record lands in the future and the app renders a negative working
+    // timer. Anchor any still-running session a couple of hours in the past,
+    // and reopen "completed" sessions that have not finished yet.
+    const stillRunning = !checkOut || checkOut.getTime() > now.getTime();
+    if (stillRunning) {
+      checkOut = null;
+      if (checkIn.getTime() > now.getTime()) {
+        checkIn.setTime(now.getTime() - (2 * 60 + (i % 45)) * 60 * 1000);
+      }
+    }
     const assignment = await db.assignment.findFirst({ where: { employeeId: emp.id } });
 
     const workingMins = checkOut

@@ -4,7 +4,7 @@ A complete Flutter mobile app for the WorkTrack workforce management platform. C
 
 ## Features
 
-- **JWT Authentication** — login with company code + employee ID + password, automatic token refresh
+- **JWT Authentication** — login with employee ID + password, automatic token refresh
 - **Dashboard** — today's status (WORKING/COMPLETED/NOT_STARTED), live working timer, quick stats, assigned projects, recent attendance
 - **Check-In Flow** — select project → front camera selfie capture → GPS location → multipart upload with photo
 - **Working Session** — live timer, geofence status, location auto-update every 2 minutes, CHECK OUT button
@@ -16,8 +16,28 @@ A complete Flutter mobile app for the WorkTrack workforce management platform. C
 
 ## API
 
-- **Base URL**: `https://my-project-chi-flame-13.vercel.app/api/v1`
-- **Demo login**: companyCode `WT001`, employeeId `2585436361`, password `employee123`
+- **Base URL**: `https://my-project-chi-flame-13.vercel.app/api/v1` (the default)
+- **Override at build/run time**:
+
+  ```bash
+  # local backend on a physical device
+  adb reverse tcp:3000 tcp:3000
+  flutter run --dart-define=API_BASE_URL=http://localhost:3000/api/v1
+
+  # Android emulator reaches the host at 10.0.2.2
+  flutter run --dart-define=API_BASE_URL=http://10.0.2.2:3000/api/v1
+  ```
+
+- **Tenant code**: employees no longer type it. The company code is supplied by
+  the build via `--dart-define=COMPANY_CODE=…` (defaults to `WT001`) and is sent
+  automatically with the login request.
+
+### Logins
+
+| Environment | Employee ID | Password |
+|---|---|---|
+| Production | `987654321` | `admin123` |
+| Local seed | `2585436361` | `employee123` |
 
 ## Tech Stack
 
@@ -82,7 +102,7 @@ flutter build apk --release
 
 ## Screens
 
-1. **Login** — gradient background (navy → blue), white login card with company code, employee ID, password
+1. **Login** — gradient background (navy → blue), white login card with employee ID and password
 2. **Dashboard** — greeting + date, status card with live timer, check-in/out button, quick stats (3 cards), assigned project, recent attendance
 3. **Project Selection** — list of assigned projects with geofence radius
 4. **Check-In Camera** — full-screen front camera with face guide circle, capture button, preview + retake/confirm

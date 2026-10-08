@@ -80,6 +80,10 @@ class Attendance {
   final String? projectName;
   final String? checkInAt;
   final String? checkOutAt;
+  /// Pre-formatted clock times (e.g. "2:00 PM") in the company's timezone, as
+  /// returned by the API. Preferred over re-deriving from the UTC ISO values.
+  final String? checkInTime;
+  final String? checkOutTime;
   final int workingMinutes;
   final int lateMinutes;
   final String sessionStatus;
@@ -90,12 +94,28 @@ class Attendance {
   final String? checkInPhoto;
   final String? checkOutPhoto;
 
+  /// Project site coords + allowed radius, so the check-out screen can
+  /// pre-check the geofence locally instead of discovering it server-side.
+  final double? projectLatitude;
+  final double? projectLongitude;
+  final double? projectRadiusMeters;
+
+  /// Sessions worked today. Employees may check in and out several times, so
+  /// the day's total can span more than one session.
+  final int sessionCount;
+
+  /// Minutes from every *closed* session today, summed server-side. Falls back
+  /// to this session's own minutes when the aggregate is absent.
+  final int totalWorkingMinutes;
+
   Attendance({
     required this.id,
     required this.status,
     this.projectName,
     this.checkInAt,
     this.checkOutAt,
+    this.checkInTime,
+    this.checkOutTime,
     required this.workingMinutes,
     required this.lateMinutes,
     required this.sessionStatus,
@@ -105,7 +125,12 @@ class Attendance {
     this.distanceFromProject,
     this.checkInPhoto,
     this.checkOutPhoto,
-  });
+    this.projectLatitude,
+    this.projectLongitude,
+    this.projectRadiusMeters,
+    this.sessionCount = 1,
+    int? totalWorkingMinutes,
+  }) : totalWorkingMinutes = totalWorkingMinutes ?? 0;
 
   factory Attendance.fromJson(Map<String, dynamic> json) {
     final att = json['attendance'] as Map<String, dynamic>?;
@@ -116,6 +141,8 @@ class Attendance {
       projectName: project?['name'],
       checkInAt: att?['checkInAt'],
       checkOutAt: att?['checkOutAt'],
+      checkInTime: att?['checkInTime'],
+      checkOutTime: att?['checkOutTime'],
       workingMinutes: att?['workingMinutes'] ?? 0,
       lateMinutes: att?['lateMinutes'] ?? 0,
       sessionStatus: att?['sessionStatus'] ?? 'NOT_STARTED',
@@ -125,6 +152,15 @@ class Attendance {
       distanceFromProject: att?['distanceFromProject'],
       checkInPhoto: att?['checkInPhoto'],
       checkOutPhoto: att?['checkOutPhoto'],
+      projectLatitude: (project?['latitude'] as num?)?.toDouble() ??
+          (project?['lat'] as num?)?.toDouble(),
+      projectLongitude: (project?['longitude'] as num?)?.toDouble() ??
+          (project?['lng'] as num?)?.toDouble(),
+      projectRadiusMeters: (project?['radius'] as num?)?.toDouble() ??
+          (project?['radiusM'] as num?)?.toDouble(),
+      sessionCount: json['sessionCount'] ?? 1,
+      totalWorkingMinutes:
+          json['totalWorkingMinutes'] as int? ?? att?['workingMinutes'] ?? 0,
     );
   }
 }
@@ -294,6 +330,10 @@ class TodayAttendance {
   final String? attendanceId;
   final bool insideGeofence;
 
+  /// Sessions worked today. Employees may check in and out several times, so
+  /// the day's total can span more than one session.
+  final int sessionCount;
+
   TodayAttendance({
     required this.date,
     required this.status,
@@ -304,6 +344,7 @@ class TodayAttendance {
     required this.workingMinutes,
     this.attendanceId,
     required this.insideGeofence,
+    this.sessionCount = 1,
   });
 
   factory TodayAttendance.fromJson(Map<String, dynamic> json) {
@@ -318,6 +359,7 @@ class TodayAttendance {
       workingMinutes: json['workingMinutes'] ?? 0,
       attendanceId: json['attendanceId'],
       insideGeofence: json['insideGeofence'] ?? true,
+      sessionCount: json['sessionCount'] ?? 1,
     );
   }
 

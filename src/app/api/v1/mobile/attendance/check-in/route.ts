@@ -78,12 +78,21 @@ export async function POST(req: Request) {
       throw new ApiError("NOT_ASSIGNED", "You are not assigned to this project.", 403);
     }
 
-    // 5. Not already checked in today
+    // 5. No session already open right now
+    //
+    // Employees may work several shifts in a day (split shifts, a site visit
+    // between deployments), so a completed session must not block a new one.
+    // Only an unclosed session does — you cannot check in twice without
+    // checking out in between.
     const { startOfDay } = nowInTimezone();
-    const existing = await db.attendance.findFirst({
-      where: { employeeId: employee.id, attendanceDate: startOfDay },
+    const openSession = await db.attendance.findFirst({
+      where: {
+        employeeId: employee.id,
+        checkIn: { not: null },
+        checkOut: null,
+      },
     });
-    if (existing?.checkIn) throw ERRORS.ALREADY_CHECKED_IN();
+    if (openSession) throw ERRORS.ALREADY_CHECKED_IN();
 
     // 6. GPS accuracy (use company setting)
     const maxAccuracySetting = await db.setting.findUnique({

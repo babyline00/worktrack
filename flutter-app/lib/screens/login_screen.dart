@@ -1,4 +1,6 @@
-// Login screen — company code + employee ID + password
+// Login screen — employee ID + password.
+// The tenant/company code is resolved from the build configuration
+// (see ApiConstants.companyCode), so employees only supply their own details.
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../core/constants.dart';
@@ -13,9 +15,8 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _companyCode = TextEditingController(text: 'WT001');
-  final _employeeId = TextEditingController(text: '2585436361');
-  final _password = TextEditingController(text: 'employee123');
+  final _employeeId = TextEditingController(text: '987654321');
+  final _password = TextEditingController(text: 'admin123');
   bool _obscurePassword = true;
 
   @override
@@ -78,17 +79,6 @@ class _LoginScreenState extends State<LoginScreen> {
                           )),
                           const SizedBox(height: 24),
 
-                          // Company Code
-                          TextFormField(
-                            controller: _companyCode,
-                            decoration: const InputDecoration(
-                              labelText: 'Company Code',
-                              prefixIcon: Icon(Icons.business_outlined),
-                            ),
-                            validator: (v) => v!.isEmpty ? 'Required' : null,
-                          ),
-                          const SizedBox(height: 16),
-
                           // Employee ID
                           TextFormField(
                             controller: _employeeId,
@@ -140,7 +130,6 @@ class _LoginScreenState extends State<LoginScreen> {
                             onPressed: auth.isLoading ? null : () async {
                               if (_formKey.currentState!.validate()) {
                                 final success = await auth.login(
-                                  _companyCode.text.trim(),
                                   _employeeId.text.trim(),
                                   _password.text,
                                 );

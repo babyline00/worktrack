@@ -1,6 +1,8 @@
 // Auth provider — manages login/logout state
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
+import '../core/constants.dart';
 import '../models/models.dart';
 
 class AuthProvider extends ChangeNotifier {
@@ -14,14 +16,26 @@ class AuthProvider extends ChangeNotifier {
   String? get error => _error;
   bool get isAuthenticated => _api.isAuthenticated && _user != null;
 
-  Future<bool> login(String companyCode, String employeeId, String password) async {
+  /// Restores a persisted session (tokens + profile) on cold start.
+  Future<void> init() async {
+    await _api.init();
+    if (_api.isAuthenticated) {
+      await loadProfile();
+    }
+    notifyListeners();
+  }
+
+  /// Signs in with employee ID + password. The tenant [companyCode] is supplied
+  /// by the build (see `ApiConstants.companyCode`) rather than the user.
+  Future<bool> login(String employeeId, String password) async {
     _isLoading = true;
     _error = null;
     notifyListeners();
 
     try {
+      await _api.init();
       final response = await _api.dio.post('/auth/login', data: {
-        'companyCode': companyCode,
+        'companyCode': ApiConstants.companyCode,
         'employeeId': employeeId,
         'password': password,
       });
@@ -47,6 +61,7 @@ class AuthProvider extends ChangeNotifier {
 
   Future<void> loadProfile() async {
     try {
+      await _api.init();
       final response = await _api.dio.get('/auth/me');
       if (response.data['success'] == true) {
         final data = response.data['data'];
@@ -68,6 +83,7 @@ class AuthProvider extends ChangeNotifier {
 
   Future<void> logout() async {
     try {
+      await _api.init();
       await _api.dio.post('/auth/logout', data: {});
     } catch (_) {}
     await _api.clearTokens();

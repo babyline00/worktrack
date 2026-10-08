@@ -26,7 +26,7 @@ class AppTheme {
         elevation: 0,
         centerTitle: false,
       ),
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         color: Colors.white,
         elevation: 0,
         shape: RoundedRectangleBorder(
@@ -34,19 +34,23 @@ class AppTheme {
           side: const BorderSide(color: AppColors.border),
         ),
       ),
-      elevatedButtonTheme: ElevatedButtonTheme.style(
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
         elevation: 0,
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
         textStyle: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 15),
+        ),
       ),
-      outlinedButtonTheme: OutlinedButtonTheme.style(
-        foregroundColor: AppColors.primary,
-        side: const BorderSide(color: AppColors.primary),
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppColors.primary,
+          side: const BorderSide(color: AppColors.primary),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+        ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
