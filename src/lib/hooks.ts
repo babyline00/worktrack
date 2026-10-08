@@ -4,6 +4,16 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 // ============= Types =============
+export interface AttendanceLeg {
+  at: string;
+  time: string;
+  coords: { lat: number; lng: number } | null;
+  location: string | null;
+  accuracyM: number | null;
+  photoId: string | null;
+  insideGeofence: boolean | null;
+}
+
 export interface Employee {
   id: string;
   empId: string;
@@ -33,6 +43,9 @@ export interface Employee {
   lateThisMonth: number;
   totalHours: number;
   attendanceRate: number;
+  /** Latest session's two legs, kept separate so the UI can show both. */
+  checkInDetail: AttendanceLeg | null;
+  checkOutDetail: AttendanceLeg | null;
 }
 
 export interface Project {

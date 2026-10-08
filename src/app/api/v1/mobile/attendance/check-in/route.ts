@@ -177,6 +177,14 @@ export async function POST(req: Request) {
       capturedAt: capturedAt ? new Date(capturedAt) : serverReceivedAt,
     });
 
+    // Link the photo back to the session. `checkInPhotoId` is what the admin UI
+    // (Live Attendance) and the dashboard's missing-photo count read; without
+    // this every record looked like it had no selfie.
+    await db.attendance.update({
+      where: { id: attendance.id },
+      data: { checkInPhotoId: storedPhoto.id },
+    });
+
     // Save initial location
     await db.attendanceLocation.create({
       data: {

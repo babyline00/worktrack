@@ -2,6 +2,58 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { haversineMeters } from "@/lib/v1";
+
+/** The fields a session row contributes to one check-in / check-out leg. */
+type SessionLegSource = {
+  checkIn: Date | null;
+  checkInLat: number | null;
+  checkInLng: number | null;
+  checkInAccuracy: number | null;
+  checkInLocation: string | null;
+  checkInPhotoId: string | null;
+  checkOut: Date | null;
+  checkOutLat: number | null;
+  checkOutLng: number | null;
+  checkOutAccuracy: number | null;
+  checkOutLocation: string | null;
+  checkOutPhotoId: string | null;
+  insideGeofence: boolean;
+  project: { lat: number | null; lng: number | null; radiusM: number | null } | null;
+};
+
+/**
+ * Normalises one leg of a session (check-in or check-out) so the UI can render
+ * the two side by side: time, GPS, accuracy, geofence verdict and selfie.
+ */
+function sessionLeg(att: SessionLegSource | undefined, which: "checkIn" | "checkOut") {
+  if (!att) return null;
+  const isIn = which === "checkIn";
+  const at = isIn ? att.checkIn : att.checkOut;
+  if (!at) return null;
+
+  const lat = isIn ? att.checkInLat : att.checkOutLat;
+  const lng = isIn ? att.checkInLng : att.checkOutLng;
+  const project = att.project;
+
+  // Prefer recomputing from the leg's own coordinates; `insideGeofence` on the
+  // row only records the check-in verdict.
+  let insideGeofence: boolean | null = isIn ? (att.insideGeofence ?? true) : null;
+  if (lat != null && lng != null && project?.lat != null && project?.lng != null) {
+    insideGeofence =
+      haversineMeters(project.lat, project.lng, lat, lng) <= (project.radiusM ?? 200);
+  }
+
+  return {
+    at: at.toISOString(),
+    time: at.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }),
+    coords: lat != null && lng != null ? { lat, lng } : null,
+    location: (isIn ? att.checkInLocation : att.checkOutLocation) || null,
+    accuracyM: (isIn ? att.checkInAccuracy : att.checkOutAccuracy) ?? null,
+    photoId: (isIn ? att.checkInPhotoId : att.checkOutPhotoId) || null,
+    insideGeofence,
+  };
+}
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -20,15 +72,21 @@ export async function GET() {
       attendance: {
         where: { attendanceDate: today },
         take: 1,
-        orderBy: { attendanceDate: "desc" },
-        include: { locations: { orderBy: { recordedAt: "desc" }, take: 1 } },
+        // Order by check-in, not attendanceDate: every record for today shares
+        // the same date, so ordering by it was a no-op and an employee with
+        // several sessions today got an arbitrary one instead of the latest.
+        orderBy: { checkIn: "desc" },
+        include: {
+          project: true,
+          locations: { orderBy: { recordedAt: "desc" }, take: 1 },
+        },
       },
     },
     orderBy: { firstName: "asc" },
   });
 
   // Build result array with real-time stats (use for...of to allow await)
-  const result = [];
+  const result: Record<string, unknown>[] = [];
   for (const e of employees) {
     const todayAtt = e.attendance[0];
     let todaysStatus = "absent";
@@ -84,6 +142,11 @@ export async function GET() {
       lastUpdatedSec: todayAtt?.checkIn ? Math.max(5, Math.round((Date.now() - todayAtt.checkIn.getTime()) / 60000) * 60) : 5,
       photoCaptured: !!todayAtt?.checkInPhotoId,
       insideGeofence: todayAtt?.insideGeofence ?? true,
+      // Per-leg check-in / check-out detail. The Live Attendance drawer shows
+      // both legs side by side, so the two need to stay distinguishable
+      // instead of being merged into one set of fields.
+      checkInDetail: sessionLeg(todayAtt, "checkIn"),
+      checkOutDetail: sessionLeg(todayAtt, "checkOut"),
       // Real-time stats
       presentThisMonth: presentCount,
       lateThisMonth: lateCount,

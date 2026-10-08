@@ -107,6 +107,12 @@ export async function POST(req: Request) {
       capturedAt: capturedAt ? new Date(capturedAt) : serverReceivedAt,
     });
 
+    // Link the photo back to the session (see check-in route).
+    await db.attendance.update({
+      where: { id: attendance.id },
+      data: { checkOutPhotoId: storedPhoto.id },
+    });
+
     // Save checkout location
     await db.attendanceLocation.create({
       data: {

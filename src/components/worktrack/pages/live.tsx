@@ -12,15 +12,15 @@ import {
   X,
   Navigation,
   User as UserIcon,
+  ImageOff,
 } from "lucide-react";
-import { useEmployees, useDashboard } from "@/lib/hooks";
+import { useEmployees, useDashboard, type AttendanceLeg } from "@/lib/hooks";
 import { useApp } from "@/lib/store";
 import {
   Avatar,
   Card,
   PageHeader,
   StatusPill,
-  VerificationBadge,
 } from "../ui";
 import { RealMap } from "../real-map";
 import { Button } from "@/components/ui/button";
@@ -39,7 +39,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
+import { cn, attendancePhotoUrl } from "@/lib/utils";
 import { toast } from "sonner";
 import { useRealtimeUpdates } from "@/lib/realtime";
 
@@ -199,6 +199,7 @@ export function LiveAttendancePage() {
                   <th className="px-4 py-3 font-medium">Employee</th>
                   <th className="px-4 py-3 font-medium">Project</th>
                   <th className="hidden px-4 py-3 font-medium md:table-cell">Check-In</th>
+                  <th className="hidden px-4 py-3 font-medium lg:table-cell">Check-Out</th>
                   <th className="px-4 py-3 font-medium">Working Time</th>
                   <th className="hidden px-4 py-3 font-medium lg:table-cell">Location</th>
                   <th className="px-4 py-3 font-medium">Status</th>
@@ -208,7 +209,7 @@ export function LiveAttendancePage() {
               </thead>
               <tbody>
                 {filtered.length === 0 && (
-                  <tr><td colSpan={8} className="px-4 py-12 text-center">
+                  <tr><td colSpan={9} className="px-4 py-12 text-center">
                     <p className="text-sm font-medium text-navy">No employees match your filters</p>
                     <p className="mt-1 text-xs text-muted-foreground">Try adjusting filters or clearing the search.</p>
                   </td></tr>
@@ -226,6 +227,7 @@ export function LiveAttendancePage() {
                     </td>
                     <td className="px-4 py-3 text-sm text-muted-foreground">{e.project}</td>
                     <td className="hidden px-4 py-3 text-sm text-muted-foreground md:table-cell">{e.checkIn ?? "—"}</td>
+                    <td className="hidden px-4 py-3 text-sm text-muted-foreground lg:table-cell">{e.checkOut ?? "—"}</td>
                     <td className="px-4 py-3 text-sm font-medium text-navy">{formatMins(e.workingTimeMins)}</td>
                     <td className="hidden px-4 py-3 text-sm text-muted-foreground lg:table-cell">
                       <span className="inline-flex items-center gap-1"><MapPin size={12} className="text-muted-foreground" />{e.location}</span>
@@ -257,30 +259,38 @@ export function LiveAttendancePage() {
                 </div>
 
                 <DetailRow label="Project" value={drawerEmp.project} />
-                <DetailRow label="Check-In" value={drawerEmp.checkIn ?? "—"} />
                 <DetailRow label="Working Time" value={formatMins(drawerEmp.workingTimeMins)} />
-                <DetailRow label="Check-Out" value={drawerEmp.checkOut ?? "—"} />
 
+                {/* Both legs of the session side by side: the check-in and
+                    check-out time, GPS and geofence verdict each. */}
                 <div>
-                  <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Check-In Photo</p>
-                  <div className="flex aspect-video items-center justify-center rounded-lg border border-dashed border-border bg-muted/30">
-                    {drawerEmp.photoCaptured ? (
-                      <div className="flex flex-col items-center gap-2 text-muted-foreground">
-                        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
-                          <svg viewBox="0 0 24 24" className="h-7 w-7" fill="none">
-                            <path d="M3 7a2 2 0 012-2h2l1.5-2h7L17 5h2a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" stroke="currentColor" strokeWidth="1.6" />
-                            <circle cx="12" cy="12" r="3.5" stroke="currentColor" strokeWidth="1.6" />
-                          </svg>
-                        </div>
-                        <p className="text-xs">Photo captured at check-in</p>
-                        <VerificationBadge status={drawerEmp.photoCaptured ? "verified" : "pending"} />
-                      </div>
-                    ) : (
-                      <p className="text-xs text-muted-foreground">No photo captured</p>
-                    )}
+                  <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Check-In &amp; Check-Out
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <LegCard title="Check-In" leg={drawerEmp.checkInDetail} />
+                    <LegCard title="Check-Out" leg={drawerEmp.checkOutDetail} />
                   </div>
                 </div>
 
+                <div>
+                  <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Selfies</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <PhotoTile
+                      label="Check-In"
+                      photoUrl={attendancePhotoUrl(drawerEmp.checkInDetail?.photoId)}
+                    />
+                    <PhotoTile
+                      label="Check-Out"
+                      photoUrl={attendancePhotoUrl(drawerEmp.checkOutDetail?.photoId)}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Current Position
+                  </p>
                 <div className="space-y-2 rounded-lg bg-muted/30 p-3">
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Location</span>
@@ -300,6 +310,7 @@ export function LiveAttendancePage() {
                     <span className="text-muted-foreground">Coordinates</span>
                     <span className="font-mono text-xs text-navy">{drawerEmp.coords.lat.toFixed(4)}, {drawerEmp.coords.lng.toFixed(4)}</span>
                   </div>
+                </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
@@ -335,6 +346,92 @@ function DetailRow({ label, value }: { label: string; value: string }) {
       <span className="text-muted-foreground">{label}</span>
       <span className="font-medium text-navy">{value}</span>
     </div>
+  );
+}
+
+/** One leg (check-in or check-out) of the employee's latest session. */
+function LegCard({ title, leg }: { title: string; leg: AttendanceLeg | null }) {
+  if (!leg) {
+    return (
+      <div className="rounded-lg border border-dashed border-border bg-muted/20 p-3">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{title}</p>
+        <p className="mt-2 text-sm text-muted-foreground">Not recorded yet</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-3">
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{title}</p>
+      <p className="mt-1 text-lg font-semibold text-navy">{leg.time}</p>
+
+      <dl className="mt-2 space-y-1.5 text-xs">
+        <div className="flex items-start justify-between gap-2">
+          <dt className="shrink-0 text-muted-foreground">Place</dt>
+          <dd className="text-right font-medium text-navy">
+            {leg.location || <span className="font-normal text-muted-foreground">—</span>}
+          </dd>
+        </div>
+        <div className="flex items-start justify-between gap-2">
+          <dt className="shrink-0 text-muted-foreground">Coordinates</dt>
+          <dd className="text-right font-mono text-navy">
+            {leg.coords
+              ? `${leg.coords.lat.toFixed(4)}, ${leg.coords.lng.toFixed(4)}`
+              : "—"}
+          </dd>
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <dt className="text-muted-foreground">Accuracy</dt>
+          <dd className="font-medium text-navy">
+            {leg.accuracyM != null ? `${Math.round(leg.accuracyM)}m` : "—"}
+          </dd>
+        </div>
+        {leg.insideGeofence !== null && (
+          <div className="flex items-center justify-between gap-2">
+            <dt className="text-muted-foreground">Geofence</dt>
+            <dd className={cn("font-medium", leg.insideGeofence ? "text-success" : "text-danger")}>
+              {leg.insideGeofence ? "Inside" : "Outside"}
+            </dd>
+          </div>
+        )}
+      </dl>
+    </div>
+  );
+}
+
+/**
+ * The actual selfie for one leg. Photos are stored in the database and served
+ * by an authenticated route, so this renders a real <img> rather than the
+ * placeholder this used to draw whenever a photo existed.
+ */
+function PhotoTile({ label, photoUrl }: { label: string; photoUrl: string | null }) {
+  // Track *which* URL failed rather than a boolean, so switching employees
+  // (and therefore URLs) resets the error without an effect.
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const failed = photoUrl != null && failedUrl === photoUrl;
+
+  return (
+    <figure className="overflow-hidden rounded-lg border border-border">
+      <div className="relative aspect-video bg-muted/30">
+        {photoUrl && !failed ? (
+          // Session cookie is sent automatically; no token needed here.
+          <img
+            src={photoUrl}
+            alt={`${label} selfie`}
+            className="h-full w-full object-cover"
+            onError={() => setFailedUrl(photoUrl)}
+          />
+        ) : (
+          <div className="flex h-full flex-col items-center justify-center gap-1 text-muted-foreground">
+            <ImageOff size={18} />
+            <p className="text-xs">{failed ? "Could not load photo" : "No photo captured"}</p>
+          </div>
+        )}
+        <span className="absolute left-1.5 top-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">
+          {label}
+        </span>
+      </div>
+    </figure>
   );
 }
 
