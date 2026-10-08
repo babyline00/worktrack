@@ -19,6 +19,14 @@ export async function GET(req: Request) {
       name: dbUser.name,
       role: dbUser.role,
       companyId: dbUser.companyId,
+      // Flattened for parity with /auth/login. The login response carried
+      // `companyName`/`companyCode` at the top level but this one did not, so
+      // the app's `User.fromJson` read null after a cold start and the Profile
+      // screen showed an empty company even though the nested object had it.
+      companyName: dbUser.employee?.company?.name ?? null,
+      companyCode: dbUser.employee?.company?.code ?? null,
+      avatarColor: dbUser.employee?.avatarColor ?? null,
+      avatarUrl: dbUser.employee?.avatarUrl ?? null,
       employee: dbUser.employee
         ? {
             id: dbUser.employee.id,

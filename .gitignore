@@ -49,7 +49,11 @@ local-*
 *.log
 dev.log
 dev.out.log
-test
+# Anchored to the repo root. Unanchored `test` matched ANY directory named
+# "test" at any depth, which silently excluded the entire Flutter test suite
+# from version control — 22 tests that ran locally and in CI-free workflows were
+# never actually committed.
+/test
 prompt
 
 server.log

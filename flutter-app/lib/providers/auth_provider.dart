@@ -72,12 +72,21 @@ class AuthProvider extends ChangeNotifier {
           role: data['role'],
           companyId: data['companyId'],
           employeeId: data['employee']?['employeeId'],
-          avatarColor: data['employee']?['avatarColor'],
+          // Read from the nested company as well as the flattened field, so a
+          // server that only sends one of the two still populates the profile.
+          companyName: data['companyName'] ?? data['employee']?['company']?['name'],
+          companyCode: data['companyCode'] ?? data['employee']?['company']?['code'],
+          avatarColor: data['avatarColor'] ?? data['employee']?['avatarColor'],
+          avatarUrl: data['avatarUrl'] ?? data['employee']?['avatarUrl'],
         );
         notifyListeners();
       }
     } catch (e) {
-      // ignore
+      // Swallowed, but that is a real gap: a failed /auth/me on cold start
+      // drops the user to the login screen with no message. Surfaced now.
+      _error = 'Could not load your profile. Please sign in again.';
+      debugPrint('loadProfile failed: $e');
+      notifyListeners();
     }
   }
 

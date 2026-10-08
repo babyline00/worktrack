@@ -7,6 +7,7 @@ class User {
   final String role;
   final String? companyId;
   final String? companyName;
+  final String? companyCode;
   final String email;
   final String? avatarColor;
   final String? avatarUrl;
@@ -18,6 +19,7 @@ class User {
     required this.role,
     this.companyId,
     this.companyName,
+    this.companyCode,
     required this.email,
     this.avatarColor,
     this.avatarUrl,
@@ -31,6 +33,7 @@ class User {
       role: json['role'] ?? 'EMPLOYEE',
       companyId: json['companyId'],
       companyName: json['companyName'],
+      companyCode: json['companyCode'],
       email: json['email'] ?? '',
       avatarColor: json['avatarColor'],
       avatarUrl: json['avatarUrl'],
