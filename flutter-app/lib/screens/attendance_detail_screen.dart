@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../core/api_client.dart';
 import '../core/constants.dart';
 import '../models/attendance.dart';
 import '../providers/attendance_provider.dart';
@@ -377,6 +378,8 @@ class _PhotoTile extends StatelessWidget {
                 : Image.network(
                     url,
                     fit: BoxFit.cover,
+                    // Photos are company-scoped rather than public.
+                    headers: ApiClient.instance.authImageHeaders,
                     errorBuilder: (_, __, ___) => const Icon(
                       Icons.broken_image_outlined,
                       color: AppColors.textMuted,

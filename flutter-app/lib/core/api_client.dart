@@ -34,6 +34,16 @@ class ApiClient {
 
   String? get accessToken => _accessToken;
 
+  /// Headers for loading an authenticated image, e.g. an attendance selfie.
+  ///
+  /// Photos are served from `/api/v1/attendance/photo/:id`, which is scoped to
+  /// the employee's company rather than public, so `Image.network` has to send
+  /// the same bearer token the API calls use.
+  Map<String, String> get authImageHeaders {
+    final token = accessToken;
+    return token == null ? const {} : {'Authorization': 'Bearer $token'};
+  }
+
   /// Idempotent — repeated calls (e.g. from a widget rebuild) reuse the
   /// same initialisation instead of rebuilding the client and its interceptor.
   Future<void> init() => _initFuture ??= _doInit();
