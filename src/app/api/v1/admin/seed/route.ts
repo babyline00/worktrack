@@ -1,21 +1,36 @@
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import bcrypt from "bcryptjs";
+import { requireRole, apiError, ApiError } from "@/lib/v1";
 
+export const runtime = "nodejs";
 export const maxDuration = 60;
 
-// POST /api/v1/admin/seed?key=worktrack-seed-2026&step=1
+// POST /api/v1/admin/seed?step=1   (requires an ADMIN/SUPER_ADMIN JWT)
+//
 // Step 1: Company + admin + projects + shifts + settings
 // Step 2: Employees + assignments + demo user
 // Step 3: Today's attendance + leave + notifications
+//
+// Previously gated on a static `?key=worktrack-seed-2026` committed to the
+// repository. That made the endpoint public: step 2 runs an unconditional
+// `employee.deleteMany`, so anyone who knew the key could erase a tenant's
+// entire staff list. It now requires a real admin token.
 export async function POST(req: Request) {
   const url = new URL(req.url);
-  const key = url.searchParams.get("key");
   const step = parseInt(url.searchParams.get("step") ?? "1");
-  if (key !== "worktrack-seed-2026") return Response.json({ error: "Unauthorized" }, { status: 401 });
+
+  try {
+    await requireRole(req, ["SUPER_ADMIN", "ADMIN"]);
+  } catch (err: any) {
+    return err instanceof ApiError
+      ? apiError(err)
+      : Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   try {
     if (step === 1) return await seedStep1();
-    if (step === 2) return await seedStep2();
+    if (step === 2) return await seedStep2(url.searchParams.get("confirm"));
     if (step === 3) return await seedStep3();
     return Response.json({ error: "Invalid step (1-3)" }, { status: 400 });
   } catch (e: any) {
@@ -59,7 +74,7 @@ async function seedStep1() {
   return Response.json({ success: true, step: 1, message: "Company + admin + projects + shifts + settings created. Call step=2 next." });
 }
 
-async function seedStep2() {
+async function seedStep2(confirm?: string | null) {
   const company = await db.company.findUnique({ where: { id: "company-main" } });
   if (!company) return Response.json({ error: "Run step 1 first" }, { status: 400 });
 
@@ -69,10 +84,24 @@ async function seedStep2() {
   const AVATAR_COLORS = ["#2563eb","#0ea5e9","#16a34a","#f59e0b","#dc2626","#8b5cf6","#ec4899","#14b8a6","#f97316","#6366f1"];
   const projects = await db.project.findMany({ where: { companyId: company.id } });
 
-  // Clean + create employees
+  // Clean + create employees.
+  //
+  // This deletes every employee in the company, so it now demands an explicit
+  // `?confirm=reset-employees`. Seeding used to erase real staff silently just
+  // because someone replayed step 2.
+  if (confirm !== "reset-employees") {
+    return Response.json(
+      {
+        success: false,
+        error:
+          "This step deletes all employees for the company. Re-run with ?confirm=reset-employees to proceed.",
+      },
+      { status: 428 },
+    );
+  }
   await db.employee.deleteMany({ where: { companyId: company.id } });
 
-  const empData = [];
+  const empData: Prisma.EmployeeCreateManyInput[] = [];
   for (let i = 0; i < 48; i++) {
     const first = FIRST_NAMES[i % FIRST_NAMES.length];
     const last = LAST_NAMES[(i * 3) % LAST_NAMES.length];
@@ -90,7 +119,7 @@ async function seedStep2() {
   const employees = await db.employee.findMany({ where: { companyId: company.id }, orderBy: { empId: "asc" } });
 
   // Assignments
-  const assignData = [];
+  const assignData: Prisma.AssignmentCreateManyInput[] = [];
   for (let i = 0; i < employees.length; i++) {
     const proj = projects[i % projects.length];
     assignData.push({ employeeId: employees[i].id, projectId: proj.id });
@@ -119,15 +148,28 @@ async function seedStep3() {
   await db.attendance.deleteMany({ where: { attendanceDate: today, companyId: company.id } });
 
   const statuses = ["PRESENT","PRESENT","PRESENT","LATE","PRESENT","PRESENT","ABSENT"];
-  const attData = [];
+  const attData: Prisma.AttendanceCreateManyInput[] = [];
   for (let i = 0; i < employees.length; i++) {
     const emp = employees[i];
     const status = statuses[i % statuses.length];
     if (status === "ABSENT") continue;
     const proj = projects[i % projects.length];
+    const now = new Date();
     const checkIn = new Date(today); checkIn.setHours(9 + (i % 3), (i * 7) % 60, 0, 0);
     const isLate = status === "LATE";
-    const checkOut = i % 5 === 0 ? new Date(checkIn.getTime() + 8 * 60 * 60 * 1000) : null;
+    let checkOut = i % 5 === 0 ? new Date(checkIn.getTime() + 8 * 60 * 60 * 1000) : null;
+
+    // `setHours` builds the nominal 9–11 AM start in the server's local timezone.
+    // Seeding before that wall-clock time (or before the shift ends) produced
+    // records dated in the future, which the app rendered as a negative working
+    // timer. Anchor still-running sessions a couple of hours in the past and
+    // reopen sessions whose shift has not finished yet.
+    if (!checkOut || checkOut.getTime() > now.getTime()) {
+      checkOut = null;
+      if (checkIn.getTime() > now.getTime()) {
+        checkIn.setTime(now.getTime() - (2 * 60 + (i % 45)) * 60 * 1000);
+      }
+    }
     const workingMins = checkOut ? Math.round((checkOut.getTime() - checkIn.getTime()) / 60000) : Math.max(0, Math.round((Date.now() - checkIn.getTime()) / 60000));
     attData.push({
       companyId: company.id, employeeId: emp.id, projectId: proj.id, shiftId: shift?.id,
