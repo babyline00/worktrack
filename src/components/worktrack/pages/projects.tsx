@@ -399,10 +399,10 @@ function CreateProjectDialog({ open, onOpenChange }: { open: boolean; onOpenChan
   const [location, setLocation] = useState("");
   const [lat, setLat] = useState("");
   const [lng, setLng] = useState("");
-  const [radius, setRadius] = useState("200");
+  const [radius, setRadius] = useState(200);
+  const [noLimit, setNoLimit] = useState(false);
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState("active");
-  const [geofence, setGeofence] = useState(true);
 
   function submit() {
     if (!name || !code) return;
@@ -410,14 +410,14 @@ function CreateProjectDialog({ open, onOpenChange }: { open: boolean; onOpenChan
       name, code, client, location,
       latitude: lat || undefined,
       longitude: lng || undefined,
-      geofenceRadius: radius,
+      geofenceRadius: noLimit ? "0" : String(radius),
       description,
       status,
-      geofence,
+      geofence: !noLimit,
     }, {
       onSuccess: () => {
         onOpenChange(false);
-        setName(""); setCode(""); setClient(""); setLocation(""); setLat(""); setLng(""); setRadius("200"); setDescription("");
+        setName(""); setCode(""); setClient(""); setLocation(""); setLat(""); setLng(""); setRadius(200); setNoLimit(false); setDescription("");
       },
     });
   }
@@ -437,23 +437,33 @@ function CreateProjectDialog({ open, onOpenChange }: { open: boolean; onOpenChan
           </div>
           <div><Label>Description</Label><Textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief project description" className="mt-1" /></div>
 
-          {/* Interactive Map Location Picker */}
+          {/* Location — search by name + interactive map + radius (all in one component) */}
           <div>
-            <Label>Project Location — Click on map to set coordinates</Label>
-            <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Location name (e.g. Dubai, UAE)" className="mt-1 mb-2" />
+            <Label>Project Location</Label>
+            <p className="mb-2 text-xs text-muted-foreground">Search by name or click on map to set coordinates. Location name auto-fills from selection.</p>
+            <Input
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              placeholder="Auto-filled from map search, or type manually"
+              className="mb-2"
+            />
             <MapLocationPicker
               lat={lat}
               lng={lng}
-              radius={parseInt(radius) || 200}
+              radius={radius}
+              noLimit={noLimit}
               onLocationChange={(newLat, newLng) => {
                 setLat(newLat.toFixed(6));
                 setLng(newLng.toFixed(6));
               }}
+              onLocationNameChange={(name) => setLocation(name)}
+              onRadiusChange={(r) => setRadius(r)}
+              onNoLimitChange={(v) => setNoLimit(v)}
             />
           </div>
 
-          {/* Coordinates + Radius */}
-          <div className="grid grid-cols-3 gap-3">
+          {/* Coordinates (read-only display) */}
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <Label>Latitude</Label>
               <Input value={lat} onChange={(e) => setLat(e.target.value)} placeholder="25.2048" className="mt-1 font-mono text-xs" />
@@ -462,49 +472,18 @@ function CreateProjectDialog({ open, onOpenChange }: { open: boolean; onOpenChan
               <Label>Longitude</Label>
               <Input value={lng} onChange={(e) => setLng(e.target.value)} placeholder="55.2708" className="mt-1 font-mono text-xs" />
             </div>
-            <div>
-              <Label>Radius (m)</Label>
-              <Input type="number" value={radius} onChange={(e) => setRadius(e.target.value)} className="mt-1" />
-            </div>
           </div>
 
-          {/* Radius slider */}
           <div>
-            <div className="mb-1 flex items-center justify-between">
-              <Label className="text-xs">Geofence Radius: {radius}m</Label>
-              <span className="text-xs text-muted-foreground">{(parseInt(radius) * 3.14 * 2 / 1000).toFixed(2)} km circumference</span>
-            </div>
-            <input
-              type="range"
-              min="50"
-              max="1000"
-              step="50"
-              value={radius}
-              onChange={(e) => setRadius(e.target.value)}
-              className="w-full accent-primary"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div><Label>Status</Label>
-              <Select value={status} onValueChange={setStatus}>
-                <SelectTrigger className="mt-1 capitalize"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="paused">Paused</SelectItem>
-                  <SelectItem value="completed">Completed</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-end">
-              <div className="flex w-full items-center justify-between rounded-lg border border-border p-3">
-                <div>
-                  <p className="text-sm font-medium text-navy">Enable Geofence</p>
-                  <p className="text-xs text-muted-foreground">Restrict check-ins</p>
-                </div>
-                <Switch checked={geofence} onCheckedChange={setGeofence} />
-              </div>
-            </div>
+            <Label>Status</Label>
+            <Select value={status} onValueChange={setStatus}>
+              <SelectTrigger className="mt-1 capitalize"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="paused">Paused</SelectItem>
+                <SelectItem value="completed">Completed</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
         <DialogFooter>
