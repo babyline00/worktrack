@@ -374,7 +374,17 @@ function ProjectDetail({
                       <td className="px-4 py-3 text-sm text-muted-foreground">{e.designation ?? "—"}</td>
                       <td className="hidden px-4 py-3 text-sm text-muted-foreground md:table-cell">{e.checkIn ?? "—"}</td>
                       <td className="px-4 py-3"><StatusPill status={e.todaysStatus as any} /></td>
-                      <td className="px-4 py-3"><Button variant="ghost" size="sm">View</Button></td>
+                      <td className="px-4 py-3">
+                        {/* Explicit rather than relying on the row's onClick, so
+                            the button works when clicked directly. */}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(ev) => { ev.stopPropagation(); setPage("live"); setDrawerEmployee(e.id); }}
+                        >
+                          View
+                        </Button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>

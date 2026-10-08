@@ -483,6 +483,26 @@ export interface CompanyProfile {
   status: string;
 }
 
+export interface RoleSummary {
+  role: string;
+  name: string;
+  desc: string;
+  color: string;
+  permissions: string[];
+  userCount: number;
+}
+
+export function useRoles() {
+  return useQuery<{ roles: RoleSummary[]; totalUsers: number }>({
+    queryKey: ["roles"],
+    queryFn: async () => {
+      const res = await fetch("/api/roles");
+      if (!res.ok) throw new Error("Failed to load roles");
+      return res.json();
+    },
+  });
+}
+
 export function useCompany() {
   return useQuery<{ company: CompanyProfile }>({
     queryKey: ["company"],

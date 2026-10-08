@@ -166,9 +166,12 @@ export function LiveAttendancePage() {
         <Card className="p-0">
           <div className="flex items-center justify-between border-b border-border p-3">
             <p className="text-sm font-semibold text-navy">Live Workforce Map</p>
-            <div className="flex gap-1">
-              <Button variant="ghost" size="icon" className="h-8 w-8"><Crosshair size={14} /></Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8"><Maximize2 size={14} /></Button>
+            <div className="flex items-center gap-2">
+              {/* The two icon buttons here did nothing at all. Replaced with the
+                  one number that was actually missing. */}
+              <span className="text-xs text-muted-foreground">
+                {filtered.filter((e) => e.coords.lat && e.coords.lng).length} of {filtered.length} located
+              </span>
             </div>
           </div>
           <div className="p-3">

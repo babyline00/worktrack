@@ -618,10 +618,15 @@ function AddEmployeeDialog({ open, onOpenChange }: { open: boolean; onOpenChange
         <DialogHeader><DialogTitle>Add Employee</DialogTitle></DialogHeader>
         <div className="space-y-4 py-2">
           <div className="flex flex-col items-center gap-2">
-            <button className="flex h-20 w-20 items-center justify-center rounded-full border-2 border-dashed border-border bg-muted/30 text-muted-foreground transition hover:border-primary">
-              <Upload size={20} />
-            </button>
-            <p className="text-xs text-muted-foreground">Profile Photo</p>
+            {/* Was a dashed circle with an upload icon and no handler. Avatars in
+                WorkTrack are generated from the employee's initials, so there is
+                nothing to upload. */}
+            <span className="flex h-20 w-20 items-center justify-center rounded-full bg-muted/60 text-xs text-muted-foreground">
+              Initials
+            </span>
+            <p className="text-xs text-muted-foreground">
+              Avatars are generated from the employee&apos;s initials.
+            </p>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div><Label>First Name *</Label><Input value={first} onChange={(e) => setFirst(e.target.value)} className="mt-1" /></div>

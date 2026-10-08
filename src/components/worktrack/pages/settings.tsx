@@ -28,7 +28,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useSettings, useUpdateSettings, useCompany, useUpdateCompany } from "@/lib/hooks";
+import {
+  useSettings,
+  useUpdateSettings,
+  useCompany,
+  useUpdateCompany,
+  useRoles,
+} from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 
 const SECTIONS = [
@@ -295,15 +301,16 @@ function CompanySettings() {
 }
 
 function RolesSettings() {
-  const roles = [
-    { name: "Super Admin", desc: "Full access to everything", color: "bg-danger-soft text-danger", permissions: ["Everything"] },
-    { name: "Company Admin", desc: "Manage company workforce", color: "bg-primary/10 text-primary", permissions: ["Dashboard", "Projects", "Employees", "Attendance", "Reports", "Settings"] },
-    { name: "Manager", desc: "Monitor teams & attendance", color: "bg-info-soft text-info", permissions: ["Dashboard", "Live Attendance", "Employees", "Reports"] },
-    { name: "Employee", desc: "Self-service portal", color: "bg-success-soft text-success", permissions: ["Assigned Projects", "Own Attendance", "Limited Settings"] },
-  ];
+  const { data, isLoading } = useRoles();
+  if (isLoading) return <Skeleton className="h-64 rounded-xl" />;
   return (
     <div className="space-y-4">
-      {roles.map((r) => (
+      <p className="text-xs text-muted-foreground">
+        {data?.totalUsers ?? 0} active account{(data?.totalUsers ?? 0) === 1 ? "" : "s"} across four
+        roles. Roles are fixed by the system; assign one when creating or editing an
+        employee&apos;s login.
+      </p>
+      {(data?.roles ?? []).map((r) => (
         <Card key={r.name}>
           <div className="flex items-start justify-between">
             <div className="flex-1">
@@ -317,7 +324,9 @@ function RolesSettings() {
                 ))}
               </div>
             </div>
-            <Button variant="outline" size="sm">Edit</Button>
+            <span className="shrink-0 rounded-md bg-muted px-2 py-1 text-xs font-medium text-navy">
+              {r.userCount} {r.userCount === 1 ? "user" : "users"}
+            </span>
           </div>
         </Card>
       ))}
@@ -345,9 +354,13 @@ function IntegrationsSettings() {
               </div>
             </div>
             {i.connected ? (
-              <span className="rounded-md bg-success-soft px-2 py-0.5 text-xs font-medium text-success">Connected</span>
+              <span className="rounded-md bg-success-soft px-2 py-0.5 text-xs font-medium text-success">Active</span>
             ) : (
-              <Button size="sm" variant="outline">Connect</Button>
+              /* No integration store exists behind these, so a Connect button
+                 could only ever be decorative. */
+              <span className="rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                Not configured
+              </span>
             )}
           </div>
         </Card>
