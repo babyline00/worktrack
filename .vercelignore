@@ -1,0 +1,26 @@
+# Keep the deployment upload small and the build reproducible.
+#
+# Vercel runs `bun install` itself, and `.gitignore` is not consulted for
+# uploads — without this, a deploy tried to push ~2.7 GB of local build output
+# and dependencies.
+node_modules
+.next
+.git
+
+# Local Flutter build output and caches — not used by the web deployment.
+flutter-app/build
+flutter-app/.dart_tool
+flutter-app/.flutter-plugins-dependencies
+flutter-app/android/.gradle
+flutter-app/android/local.properties
+
+# Runtime uploads (attendance selfies/location pings) — written by the API.
+public/uploads
+
+# Local artefacts.
+tool-results
+download
+.dev.vars
+*.log
+dev.log
+server.log
