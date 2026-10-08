@@ -19,7 +19,6 @@ import {
 import { useApp, type PageKey } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { Avatar } from "./ui";
-import { NOTIFICATIONS } from "@/lib/data";
 import { Button } from "@/components/ui/button";
 
 const NAV: {

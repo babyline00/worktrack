@@ -453,6 +453,90 @@ export function useCreateLeave() {
   });
 }
 
+export interface CompanyProfile {
+  id: string;
+  name: string;
+  code: string;
+  industry: string | null;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  timezone: string;
+  currency: string;
+  status: string;
+}
+
+export function useCompany() {
+  return useQuery<{ company: CompanyProfile }>({
+    queryKey: ["company"],
+    queryFn: async () => {
+      const res = await fetch("/api/company");
+      if (!res.ok) throw new Error("Failed to load company");
+      return res.json();
+    },
+  });
+}
+
+export function useUpdateCompany() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: Partial<CompanyProfile>) => {
+      const res = await fetch("/api/company", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw Object.assign(new Error(body?.error ?? "Failed to save company"), { fields: body?.errors });
+      return body;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["company"] });
+      qc.invalidateQueries({ queryKey: ["settings"] });
+      toast.success("Company details saved");
+    },
+    onError: (e: any) => toast.error(e.message ?? "Unable to save company"),
+  });
+}
+
+export function useUpdateShift() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: any) => {
+      const res = await fetch("/api/shifts", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error ?? "Failed to update shift");
+      return body;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["shifts"] });
+      toast.success("Shift updated");
+    },
+    onError: (e: any) => toast.error(e.message ?? "Unable to update shift"),
+  });
+}
+
+export function useDeleteShift() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/shifts?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error ?? "Failed to delete shift");
+      return body;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["shifts"] });
+      toast.success("Shift deleted");
+    },
+    onError: (e: any) => toast.error(e.message ?? "Unable to delete shift"),
+  });
+}
+
 export function useCreateShift() {
   const qc = useQueryClient();
   return useMutation({

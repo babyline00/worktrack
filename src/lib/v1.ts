@@ -305,17 +305,51 @@ export function formatMins(mins: number): string {
 // Late calculation
 // ============================================================
 
+/**
+ * Parses a shift time into minutes since midnight.
+ *
+ * Accepts both "09:00" (24-hour, what the shift form stores) and "09:00 AM"
+ * (12-hour, what seeded and legacy rows hold). Returns null for a shift with no
+ * fixed hours — "Variable"/flexible shifts are legitimate and must not be
+ * treated as midnight.
+ */
+export function parseShiftTime(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const trimmed = String(value).trim();
+  if (!trimmed || /^variable$/i.test(trimmed)) return null;
+
+  const m = trimmed.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+  if (!m) return null;
+
+  let hours = parseInt(m[1], 10);
+  const mins = parseInt(m[2], 10);
+  const ampm = m[3]?.toUpperCase();
+
+  if (mins > 59) return null;
+  if (ampm) {
+    if (hours < 1 || hours > 12) return null;
+    if (ampm === "PM" && hours !== 12) hours += 12;
+    if (ampm === "AM" && hours === 12) hours = 0;
+  } else if (hours > 23) {
+    return null;
+  }
+  return hours * 60 + mins;
+}
+
+/** Normalises a shift time to "HH:MM", or null when it is a flexible shift. */
+export function normalizeShiftTime(value: string | null | undefined): string | null {
+  const mins = parseShiftTime(value);
+  if (mins === null) return null;
+  return `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
+}
+
 export function calculateLateMins(checkIn: Date, shiftStart: string, graceMins: number): number {
-  // shiftStart format: "09:00 AM"
-  const m = shiftStart.match(/(\d+):(\d+)\s*(AM|PM)/i);
-  if (!m) return 0;
-  let hours = parseInt(m[1]);
-  const mins = parseInt(m[2]);
-  const ampm = m[3].toUpperCase();
-  if (ampm === "PM" && hours !== 12) hours += 12;
-  if (ampm === "AM" && hours === 12) hours = 0;
+  const mins = parseShiftTime(shiftStart);
+  // A flexible shift has no defined start, so nobody can be late to it.
+  if (mins === null) return 0;
+
   const shiftDate = new Date(checkIn);
-  shiftDate.setHours(hours, mins + graceMins, 0, 0);
+  shiftDate.setHours(Math.floor(mins / 60), (mins % 60) + graceMins, 0, 0);
   const diff = Math.max(0, Math.round((checkIn.getTime() - shiftDate.getTime()) / 60000));
   return diff;
 }

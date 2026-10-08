@@ -21,7 +21,14 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useSettings, useUpdateSettings } from "@/lib/hooks";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useSettings, useUpdateSettings, useCompany, useUpdateCompany } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 
 const SECTIONS = [
@@ -157,19 +164,132 @@ export function SettingsPage() {
 }
 
 function CompanySettings() {
+  const { data, isLoading, error } = useCompany();
+  const updateCompany = useUpdateCompany();
+  const [form, setForm] = useState<Record<string, string>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const company = data?.company;
+
+  // Seed the form while rendering rather than in an effect: React re-runs this
+  // component immediately before painting, so there is no flash of empty inputs
+  // and no cascading setState.
+  const [seededFor, setSeededFor] = useState<string | null>(null);
+  if (company && seededFor !== company.id) {
+    setSeededFor(company.id);
+    setErrors({});
+    setForm({
+      name: company.name ?? "",
+      code: company.code ?? "",
+      industry: company.industry ?? "",
+      email: company.email ?? "",
+      phone: company.phone ?? "",
+      address: company.address ?? "",
+      timezone: company.timezone ?? "",
+      currency: company.currency ?? "",
+      status: company.status ?? "ACTIVE",
+    });
+  }
+
+  const set = (key: string, value: string) => {
+    setForm((f) => ({ ...f, [key]: value }));
+    setErrors((e) => ({ ...e, [key]: "" }));
+  };
+
+  function save() {
+    setErrors({});
+    updateCompany.mutate(form, {
+      onError: (e: any) => setErrors(e?.fields ?? {}),
+    });
+  }
+
+  if (isLoading) {
+    return (
+      <Card>
+        <Skeleton className="h-72 rounded-xl" />
+      </Card>
+    );
+  }
+
+  if (error || !company) {
+    return (
+      <Card className="py-12 text-center">
+        <p className="text-sm font-medium text-navy">Could not load company details</p>
+        <p className="mt-1 text-xs text-muted-foreground">{error?.message}</p>
+      </Card>
+    );
+  }
+
+  const err = (k: string) =>
+    errors[k] ? <p className="mt-1 text-xs text-danger">{errors[k]}</p> : null;
+
   return (
     <Card>
       <p className="mb-4 text-sm font-semibold text-navy">Company Information</p>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <div><Label>Company Name</Label><Input defaultValue="WorkTrack LLC" className="mt-1" /></div>
-        <div><Label>Industry</Label><Input defaultValue="Construction & Services" className="mt-1" /></div>
-        <div><Label>Email</Label><Input defaultValue="admin@worktrack.io" className="mt-1" /></div>
-        <div><Label>Phone</Label><Input defaultValue="+92 300 1234567" className="mt-1" /></div>
-        <div className="md:col-span-2"><Label>Address</Label><Input defaultValue="Lahore, Pakistan" className="mt-1" /></div>
-        <div><Label>Timezone</Label><Input defaultValue="Asia/Karachi (PKT+5)" className="mt-1" /></div>
-        <div><Label>Currency</Label><Input defaultValue="PKR (₨)" className="mt-1" /></div>
+        <div>
+          <Label>Company Name</Label>
+          <Input value={form.name ?? ""} onChange={(e) => set("name", e.target.value)} className="mt-1" />
+          {err("name")}
+        </div>
+        <div>
+          <Label>Industry</Label>
+          <Input value={form.industry ?? ""} onChange={(e) => set("industry", e.target.value)} className="mt-1" />
+        </div>
+        <div>
+          <Label>Email</Label>
+          <Input type="email" value={form.email ?? ""} onChange={(e) => set("email", e.target.value)} className="mt-1" />
+        </div>
+        <div>
+          <Label>Phone</Label>
+          <Input value={form.phone ?? ""} onChange={(e) => set("phone", e.target.value)} className="mt-1" />
+        </div>
+        <div className="md:col-span-2">
+          <Label>Address</Label>
+          <Input value={form.address ?? ""} onChange={(e) => set("address", e.target.value)} className="mt-1" />
+        </div>
+        <div>
+          <Label>Company Code</Label>
+          <Input
+            value={form.code ?? ""}
+            onChange={(e) => set("code", e.target.value.toUpperCase())}
+            className="mt-1 font-mono text-xs"
+          />
+          <p className="mt-1 text-xs text-muted-foreground">
+            Employees type this to sign in on mobile. Changing it locks out anyone using the old code.
+          </p>
+          {err("code")}
+        </div>
+        <div>
+          <Label>Currency</Label>
+          <Input value={form.currency ?? ""} onChange={(e) => set("currency", e.target.value.toUpperCase())} className="mt-1" />
+          {err("currency")}
+        </div>
+        <div>
+          <Label>Timezone (IANA)</Label>
+          <Input value={form.timezone ?? ""} onChange={(e) => set("timezone", e.target.value)} className="mt-1 font-mono text-xs" />
+          <p className="mt-1 text-xs text-muted-foreground">e.g. Asia/Karachi — drives every timestamp shown.</p>
+          {err("timezone")}
+        </div>
+        <div>
+          <Label>Status</Label>
+          <Select value={form.status ?? "ACTIVE"} onValueChange={(v) => set("status", v)}>
+            <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ACTIVE">Active</SelectItem>
+              <SelectItem value="SUSPENDED">Suspended</SelectItem>
+              <SelectItem value="INACTIVE">Inactive</SelectItem>
+            </SelectContent>
+          </Select>
+          {err("status")}
+        </div>
       </div>
-      <div className="mt-5 flex justify-end"><Button>Save Changes</Button></div>
+      <div className="mt-5 flex justify-end">
+        <Button onClick={save} disabled={updateCompany.isPending}>
+          <Save size={14} className="mr-2" />
+          {updateCompany.isPending ? "Saving…" : "Save Changes"}
+        </Button>
+      </div>
     </Card>
   );
 }
