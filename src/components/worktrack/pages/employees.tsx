@@ -16,6 +16,8 @@ import {
   Clock,
   FileText,
   Trash2,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { useEmployees, useProjects, useCreateEmployee, useDeleteEmployee } from "@/lib/hooks";
 import { useApp } from "@/lib/store";
@@ -302,6 +304,7 @@ function AddEmployeeDialog({ open, onOpenChange }: { open: boolean; onOpenChange
   const [department, setDepartment] = useState("Marketing");
   const [designation, setDesignation] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [active, setActive] = useState(true);
   const [assigned, setAssigned] = useState<string[]>([]);
 
@@ -314,16 +317,26 @@ function AddEmployeeDialog({ open, onOpenChange }: { open: boolean; onOpenChange
       toast.error("First name and employee ID are required");
       return;
     }
+    if (!password) {
+      toast.error("Password is required for the employee to log in");
+      return;
+    }
+    if (password.length < 6) {
+      toast.error("Password must be at least 6 characters");
+      return;
+    }
     createEmployee.mutate({
       firstName: first,
       lastName: last,
       empId,
-      email,
+      email: email || `${first.toLowerCase()}.${last.toLowerCase()}@worktrack.io`,
       phone,
       department,
       designation,
       status: active ? "active" : "inactive",
       projectIds: assigned,
+      password,
+      role: "EMPLOYEE",
     }, {
       onSuccess: () => {
         onOpenChange(false);
@@ -351,7 +364,30 @@ function AddEmployeeDialog({ open, onOpenChange }: { open: boolean; onOpenChange
             <div><Label>Employee ID *</Label><Input value={empId} onChange={(e) => setEmpId(e.target.value)} placeholder="2585436369" className="mt-1" /></div>
             <div><Label>Phone</Label><Input value={phone} onChange={(e) => setPhone(e.target.value)} className="mt-1" /></div>
           </div>
-          <div><Label>Email</Label><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="mt-1" /></div>
+          <div><Label>Email</Label><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="auto-generated if empty" className="mt-1" /></div>
+
+          {/* Password — admin sets login password for employee */}
+          <div>
+            <Label>Password *</Label>
+            <div className="relative mt-1">
+              <Input
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Min 6 characters"
+                className="pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-navy"
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">Employee will use this password with their Employee ID to log in to the mobile app.</p>
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label>Department</Label>

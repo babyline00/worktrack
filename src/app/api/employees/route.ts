@@ -101,12 +101,29 @@ export async function POST(req: Request) {
   const companyId = (session.user as any).companyId;
   const body = await req.json();
 
+  // Check empId unique within company
+  const existing = await db.employee.findUnique({
+    where: { companyId_empId: { companyId, empId: body.empId } },
+  });
+  if (existing) {
+    return NextResponse.json({ error: "Employee ID already exists in this company" }, { status: 409 });
+  }
+
+  // Auto-generate email if not provided
+  const email = body.email || `${body.firstName.toLowerCase()}.${(body.lastName || "").toLowerCase()}@worktrack.io`;
+
+  // Check if email is already used by a user
+  const existingUser = await db.user.findUnique({ where: { email } });
+  if (existingUser) {
+    return NextResponse.json({ error: "Email already in use. Please use a different email." }, { status: 409 });
+  }
+
   const emp = await db.employee.create({
     data: {
       empId: body.empId,
       firstName: body.firstName,
       lastName: body.lastName ?? "",
-      email: body.email,
+      email,
       phone: body.phone,
       departmentId: body.departmentId ?? null,
       designation: body.designation,
@@ -116,6 +133,24 @@ export async function POST(req: Request) {
     },
   });
 
+  // Create user account with password (so employee can log in)
+  if (body.password) {
+    const bcrypt = await import("bcryptjs");
+    const hashedPassword = await bcrypt.hash(body.password, 10);
+    await db.user.create({
+      data: {
+        email,
+        password: hashedPassword,
+        name: `${body.firstName} ${body.lastName ?? ""}`.trim(),
+        role: body.role || "EMPLOYEE",
+        companyId,
+        employeeId: emp.id,
+        status: "ACTIVE",
+      },
+    });
+  }
+
+  // Assign projects
   if (body.projectIds?.length) {
     await db.assignment.createMany({
       data: body.projectIds.map((pid: string) => ({ employeeId: emp.id, projectId: pid })),
@@ -123,5 +158,5 @@ export async function POST(req: Request) {
     });
   }
 
-  return NextResponse.json({ employee: emp });
+  return NextResponse.json({ employee: emp, message: body.password ? "Employee created with login access" : "Employee created (no login)" });
 }
