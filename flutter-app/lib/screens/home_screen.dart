@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/attendance_provider.dart';
+import '../providers/notification_provider.dart';
 import 'dashboard_tab.dart';
 import 'attendance_history_tab.dart';
 import 'leave_tab.dart';
@@ -14,20 +15,77 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   int _currentIndex = 0;
 
   /// Needed so the Leave tab can be refreshed when selected — `IndexedStack`
   /// keeps every tab alive, so its `initState` only ever runs once.
   final _leaveKey = GlobalKey<LeaveTabState>();
 
+  /// Android suspends timers and the GPS stream while the app is backgrounded,
+  /// so tracking has to be explicitly resumed on return. Without this a session
+  /// silently stopped being tracked the moment the screen was locked.
+  bool _wasBackgrounded = false;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // The dashboard is the screen's own data, so it loads with the screen.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) context.read<AttendanceProvider>().loadDashboard();
+      if (!mounted) return;
+      final att = context.read<AttendanceProvider>();
+      att.loadDashboard();
+      att.loadUnreadNotifications();
+      context.read<NotificationProvider>().loadUnreadCount();
+      // Re-attach tracking if a session was already open when the app started,
+      // e.g. after a cold start mid-shift.
+      _ensureTracking(att);
     });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final att = context.read<AttendanceProvider>();
+    switch (state) {
+      case AppLifecycleState.paused:
+      case AppLifecycleState.detached:
+      case AppLifecycleState.hidden:
+        _wasBackgrounded = true;
+        att.pauseLiveTracking();
+      case AppLifecycleState.resumed:
+        if (_wasBackgrounded) {
+          _wasBackgrounded = false;
+          _ensureTracking(att);
+          att.resumeLiveTracking();
+          // Positions and attendance may have moved on while we were away.
+          att.loadTodayAttendance();
+          att.loadDashboard();
+          att.loadUnreadNotifications();
+          context.read<NotificationProvider>().loadUnreadCount();
+        }
+      case AppLifecycleState.inactive:
+        break;
+    }
+  }
+
+  /// Starts live tracking if there is an open session that is not yet tracked.
+  void _ensureTracking(AttendanceProvider att) {
+    if (att.isTracking) return;
+    final today = att.todayAttendance;
+    if (today?.sessionStatus != 'WORKING') return;
+    final id = today?.id;
+    if (id == null || id.isEmpty) return;
+    att.startLiveTracking(
+      attendanceId: id,
+      checkInAt: DateTime.tryParse(today!.checkInAt ?? '') ?? DateTime.now(),
+    );
   }
 
   /// Reloads the data behind a tab as it becomes visible.

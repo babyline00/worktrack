@@ -177,61 +177,71 @@ export async function POST(req: Request) {
       capturedAt: capturedAt ? new Date(capturedAt) : serverReceivedAt,
     });
 
-    // Link the photo back to the session. `checkInPhotoId` is what the admin UI
-    // (Live Attendance) and the dashboard's missing-photo count read; without
-    // this every record looked like it had no selfie.
-    await db.attendance.update({
-      where: { id: attendance.id },
-      data: { checkInPhotoId: storedPhoto.id },
-    });
+    // The four writes below are independent of each other — the location row,
+    // the device upsert and the notification all only need `attendance.id`,
+    // and none of them reads another's result. They were awaited one after
+    // another, putting four sequential database round-trips on the critical
+    // path of a request the user is watching a spinner for. Run them together.
+    //
+    // The photo link is the one exception: it needs `storedPhoto.id`, so it
+    // stays sequenced, but it is grouped with the parallel work so the single
+    // dependent step is explicit.
+    await Promise.all([
+      // Link the photo back to the session. `checkInPhotoId` is what the admin
+      // UI (Live Attendance) and the dashboard's missing-photo count read;
+      // without this every record looked like it had no selfie.
+      db.attendance.update({
+        where: { id: attendance.id },
+        data: { checkInPhotoId: storedPhoto.id },
+      }),
 
-    // Save initial location
-    await db.attendanceLocation.create({
-      data: {
-        attendanceId: attendance.id,
-        latitude,
-        longitude,
-        accuracy,
-        recordedAt: serverReceivedAt,
-        insideGeofence: distance <= project.radiusM,
-        distanceFromProject: distance,
-      },
-    });
-
-    // Broadcast via WebSocket for admin dashboard real-time update
-    emitCheckin({ employeeId: employee.id, employeeName: `${employee.firstName} ${employee.lastName}` });
-
-    // Update device last seen
-    if (deviceId) {
-      await db.device.upsert({
-        where: { userId_deviceId: { userId: user.sub, deviceId } },
-        update: { lastSeenAt: new Date(), model: deviceModel ?? null, appVersion: appVersion ?? null, status: "ACTIVE" },
-        create: {
-          userId: user.sub,
-          employeeId: employee.id,
-          deviceId,
-          model: deviceModel ?? null,
-          appVersion: appVersion ?? null,
-          platform: "ANDROID",
-          status: "ACTIVE",
+      // Save initial location
+      db.attendanceLocation.create({
+        data: {
+          attendanceId: attendance.id,
+          latitude,
+          longitude,
+          accuracy,
+          recordedAt: serverReceivedAt,
+          insideGeofence: distance <= project.radiusM,
+          distanceFromProject: distance,
         },
-      });
-    }
+      }),
 
-    // Create notification
-    await db.notification.create({
-      data: {
-        userId: null,
-        companyId: employee.companyId,
-        type: "ATTENDANCE",
-        title: `${employee.firstName} checked in${lateMins > 0 ? " late" : ""}`,
-        description: `${formatTimeInTimezone(serverReceivedAt, employee.company.timezone)} • ${project.name}`,
-        timeAgo: "Just now",
-        unread: true,
-      },
-    });
+      // Update device last seen
+      deviceId
+        ? db.device.upsert({
+            where: { userId_deviceId: { userId: user.sub, deviceId } },
+            update: { lastSeenAt: new Date(), model: deviceModel ?? null, appVersion: appVersion ?? null, status: "ACTIVE" },
+            create: {
+              userId: user.sub,
+              employeeId: employee.id,
+              deviceId,
+              model: deviceModel ?? null,
+              appVersion: appVersion ?? null,
+              platform: "ANDROID",
+              status: "ACTIVE",
+            },
+          })
+        : Promise.resolve(null),
 
-    // Broadcast via WebSocket
+      // Create notification
+      db.notification.create({
+        data: {
+          userId: null,
+          companyId: employee.companyId,
+          type: "ATTENDANCE",
+          title: `${employee.firstName} checked in${lateMins > 0 ? " late" : ""}`,
+          description: `${formatTimeInTimezone(serverReceivedAt, employee.company.timezone)} • ${project.name}`,
+          timeAgo: "Just now",
+          unread: true,
+        },
+      }),
+    ]);
+
+    // Broadcast via WebSocket. This used to be emitted twice — once before the
+    // device/notification writes and again after — so the admin dashboard
+    // received every check-in as a duplicate event.
     emitCheckin({ employeeId: employee.id, employeeName: `${employee.firstName} ${employee.lastName}` });
 
     const response = {

@@ -180,6 +180,39 @@ export async function requireRole(req: Request, roles: string[]): Promise<JwtPay
 }
 
 // ============================================================
+// Notification scoping
+// ============================================================
+
+/** Roles that treat the company notification stream as their inbox. */
+const NOTIFICATION_INBOX_ROLES = ["SUPER_ADMIN", "ADMIN", "MANAGER"];
+
+/**
+ * Rows a user is allowed to *see*: their own notifications plus company-wide
+ * broadcasts (`userId: null`). Never another company's rows.
+ */
+export function notificationReadScope(user: JwtPayload) {
+  return {
+    OR: [{ userId: user.sub }, { companyId: user.companyId, userId: null }],
+  };
+}
+
+/**
+ * Rows a user is allowed to *mark read*.
+ *
+ * `Notification.unread` is a column on the row, not per-recipient state, so a
+ * write is visible to everyone who can read that row. Managers own the company
+ * inbox and may clear it. An employee may only clear their own notifications —
+ * otherwise tapping "mark all read" on the phone would silently mark their
+ * manager's and colleagues' notifications read as well.
+ */
+export function notificationWriteScope(user: JwtPayload) {
+  if (NOTIFICATION_INBOX_ROLES.includes(user.role)) {
+    return { companyId: user.companyId };
+  }
+  return { userId: user.sub };
+}
+
+// ============================================================
 // Idempotency — dedupe requests with same Idempotency-Key
 // ============================================================
 

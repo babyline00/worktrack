@@ -197,6 +197,12 @@ class ApiClient {
         await _storage.write(key: 'access_token', value: _accessToken);
         return true;
       }
+
+      // A non-200 means the refresh token is expired or revoked. Only the catch
+      // branch used to clear tokens, so this fell through to `return false` with
+      // the dead tokens still on disk: isAuthenticated stayed true and every
+      // later request 401'd forever with no prompt to sign in again.
+      await clearTokens();
     } catch (e) {
       // Refresh failed — logout
       await clearTokens();

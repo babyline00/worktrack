@@ -6,6 +6,7 @@ import {
   ApiError,
   ERRORS,
   paginate,
+  notificationReadScope,
 } from "@/lib/v1";
 
 export const runtime = "nodejs";
@@ -16,10 +17,8 @@ export async function GET(req: Request) {
     const user = await requireAuth(req);
     const { page, limit, skip } = paginate(req);
 
-    const where = {
-      OR: [{ userId: user.sub }, { companyId: user.companyId, userId: null }],
-    };
-    const [items, total] = await Promise.all([
+    const where = notificationReadScope(user);
+    const [items, total, unreadCount] = await Promise.all([
       db.notification.findMany({
         where,
         orderBy: { createdAt: "desc" },
@@ -27,6 +26,9 @@ export async function GET(req: Request) {
         take: limit,
       }),
       db.notification.count({ where }),
+      // Shipped with the list so the phone's bell badge is correct on arrival
+      // instead of needing a second request.
+      db.notification.count({ where: { AND: [where, { unread: true }] } }),
     ]);
 
     return apiSuccess({
@@ -34,6 +36,7 @@ export async function GET(req: Request) {
         ...n,
         type: n.type.toLowerCase(),
       })),
+      unreadCount,
       pagination: { page, limit, total, pages: Math.ceil(total / limit) },
     });
   } catch (err: any) {

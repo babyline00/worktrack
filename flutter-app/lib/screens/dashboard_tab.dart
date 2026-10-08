@@ -6,6 +6,8 @@ import '../core/constants.dart';
 import '../models/models.dart';
 import '../providers/attendance_provider.dart';
 import '../providers/auth_provider.dart';
+import '../providers/notification_provider.dart';
+import 'notifications_screen.dart';
 import 'project_selection_screen.dart';
 import 'working_session_screen.dart';
 
@@ -161,9 +163,34 @@ class _DashboardTabState extends State<DashboardTab> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text('WorkTrack', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
-                        IconButton(
-                          icon: const Icon(Icons.notifications_outlined, color: Colors.white),
-                          onPressed: () {},
+                        // Was `onPressed: () {}` — the bell did nothing and the
+                        // notifications screen was unreachable from anywhere.
+                        Consumer<NotificationProvider>(
+                          builder: (context, notifs, _) => IconButton(
+                            tooltip: notifs.hasUnread
+                                ? '${notifs.unreadCount} unread notifications'
+                                : 'Notifications',
+                            icon: Badge(
+                              isLabelVisible: notifs.hasUnread,
+                              label: Text(notifs.unreadCount > 99
+                                  ? '99+'
+                                  : '${notifs.unreadCount}'),
+                              backgroundColor: AppColors.danger,
+                              child: const Icon(Icons.notifications_outlined,
+                                  color: Colors.white),
+                            ),
+                            onPressed: () async {
+                              await Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => const NotificationsScreen(),
+                                ),
+                              );
+                              // The screen may have cleared items; resync so the
+                              // badge reflects what actually happened.
+                              if (!context.mounted) return;
+                              await notifs.load();
+                            },
+                          ),
                         ),
                       ],
                     ),

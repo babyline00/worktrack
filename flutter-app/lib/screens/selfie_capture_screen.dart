@@ -11,6 +11,7 @@ import 'package:provider/provider.dart';
 
 import '../core/constants.dart';
 import '../core/geofence.dart';
+import '../core/photo_compressor.dart';
 import '../providers/attendance_provider.dart';
 import 'working_session_screen.dart' show LiveLocationTile;
 
@@ -66,6 +67,15 @@ class _SelfieCaptureScreenState extends State<SelfieCaptureScreen> {
   bool _isCameraReady = false;
   String? _cameraError;
   String? _capturedPath;
+
+  /// Size of the file that will actually be uploaded, shown so the wait is
+  /// explainable rather than mysterious.
+  int? _capturedBytes;
+
+  /// True while the capture is being compressed. Compression happens before
+  /// the preview appears, so this needs its own progress state.
+  bool _isCompressing = false;
+
   bool _isUploading = false;
 
   @override
@@ -81,6 +91,8 @@ class _SelfieCaptureScreenState extends State<SelfieCaptureScreen> {
   Future<void> _initCamera() async {
     try {
       final cameras = await availableCameras();
+      // Backing out while the camera enumerates used to throw on setState.
+      if (!mounted) return;
       if (cameras.isEmpty) {
         setState(() => _cameraError = 'No camera found on this device');
         return;
@@ -104,8 +116,10 @@ class _SelfieCaptureScreenState extends State<SelfieCaptureScreen> {
         _isCameraReady = true;
       });
     } on CameraException catch (e) {
+      if (!mounted) return;
       setState(() => _cameraError = _describeCameraError(e));
     } catch (_) {
+      if (!mounted) return;
       setState(() => _cameraError =
           'Camera unavailable. Grant camera permission and reopen this screen.');
     }
@@ -123,11 +137,29 @@ class _SelfieCaptureScreenState extends State<SelfieCaptureScreen> {
   Future<void> _capture() async {
     final controller = _controller;
     if (controller == null || !controller.value.isInitialized) return;
+    setState(() => _isCompressing = true);
     try {
       final xFile = await controller.takePicture();
       if (!mounted) return;
-      setState(() => _capturedPath = xFile.path);
+
+      // Compress here rather than at submit time so the preview the user sees is
+      // already the upload, and the wait is visible instead of appearing later
+      // as an unexplained stall on the upload button.
+      final compressed = await PhotoCompressor.compressForUpload(xFile.path);
+      if (!mounted) return;
+
+      // Read the size before setState — awaiting inside the callback would
+      // schedule the frame after the file stat.
+      final size = await File(compressed).length();
+      if (!mounted) return;
+      setState(() {
+        _capturedPath = compressed;
+        _isCompressing = false;
+        _capturedBytes = size;
+      });
     } catch (_) {
+      if (!mounted) return;
+      setState(() => _isCompressing = false);
       _showError('Failed to capture photo. Try again.');
     }
   }
@@ -190,7 +222,9 @@ class _SelfieCaptureScreenState extends State<SelfieCaptureScreen> {
 
     // Mirror the server's accuracy gate so the user isn't told "Check-in
     // failed" for something they can fix by waiting for a better fix.
-    const maxAccuracyMeters = 50.0;
+    // From the tenant's MAX_GPS_ACCURACY setting rather than a literal, so a
+    // company configured for a looser tolerance is not blocked at 50 m.
+    final maxAccuracyMeters = att.maxGpsAccuracyMeters;
     final accuracy = loc['accuracy'] as double;
     if (accuracy > maxAccuracyMeters) {
       if (!mounted) return;
@@ -333,7 +367,12 @@ class _SelfieCaptureScreenState extends State<SelfieCaptureScreen> {
                 ? _buildUploading(verb)
                 : _capturedPath != null
                     ? _buildPreview(verb)
-                    : _buildCapture(),
+                    : _isCompressing
+                        ? const _CenteredMessage(
+                            icon: Icons.compress,
+                            message: 'Compressing photo…',
+                          )
+                        : _buildCapture(),
           ),
         ],
       ),
@@ -436,6 +475,25 @@ class _SelfieCaptureScreenState extends State<SelfieCaptureScreen> {
       fit: StackFit.expand,
       children: [
         Image.file(File(_capturedPath!), fit: BoxFit.cover),
+        // Show the payload size. It makes the upload wait legible instead of
+        // looking like the app has hung.
+        if (_capturedBytes != null)
+          Positioned(
+            top: 16,
+            right: 16,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: Colors.black54,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                '${(_capturedBytes! / 1024).round()} KB',
+                style: const TextStyle(
+                    color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ),
         Positioned(
           bottom: 40,
           left: 24,

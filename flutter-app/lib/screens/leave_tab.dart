@@ -229,6 +229,7 @@ class _LeaveRequestDialogState extends State<_LeaveRequestDialog> {
                   lastDate:
                       DateTime.now().add(const Duration(days: 365)),
                 );
+                if (!mounted) return;
                 if (d != null) setState(() => _fromDate = d);
               },
             ),
@@ -243,6 +244,7 @@ class _LeaveRequestDialogState extends State<_LeaveRequestDialog> {
                   lastDate:
                       DateTime.now().add(const Duration(days: 365)),
                 );
+                if (!mounted) return;
                 if (d != null) setState(() => _toDate = d);
               },
             ),

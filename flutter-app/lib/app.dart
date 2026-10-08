@@ -6,6 +6,7 @@ import 'core/theme.dart';
 import 'providers/attendance_provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/dashboard_provider.dart';
+import 'providers/notification_provider.dart';
 import 'providers/project_provider.dart';
 import 'screens/splash_screen.dart';
 
@@ -23,6 +24,8 @@ class WorkTrackApp extends StatelessWidget {
             create: (_) => AttendanceProvider()),
         ChangeNotifierProvider<ProjectProvider>(
             create: (_) => ProjectProvider()),
+        ChangeNotifierProvider<NotificationProvider>(
+            create: (_) => NotificationProvider()),
       ],
       child: MaterialApp(
         title: 'WorkTrack',

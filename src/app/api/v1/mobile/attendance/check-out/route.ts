@@ -107,37 +107,42 @@ export async function POST(req: Request) {
       capturedAt: capturedAt ? new Date(capturedAt) : serverReceivedAt,
     });
 
-    // Link the photo back to the session (see check-in route).
-    await db.attendance.update({
-      where: { id: attendance.id },
-      data: { checkOutPhotoId: storedPhoto.id },
-    });
+    // Independent writes grouped together: three sequential database round-trips
+    // were sitting on the critical path of the request the user is watching a
+    // spinner for. Same reasoning as the check-in route.
+    await Promise.all([
+      // Link the photo back to the session (see check-in route).
+      db.attendance.update({
+        where: { id: attendance.id },
+        data: { checkOutPhotoId: storedPhoto.id },
+      }),
 
-    // Save checkout location
-    await db.attendanceLocation.create({
-      data: {
-        attendanceId: attendance.id,
-        latitude,
-        longitude,
-        accuracy,
-        recordedAt: serverReceivedAt,
-        source: "MOBILE",
-        insideGeofence: distance <= (attendance.project?.radiusM ?? 200),
-        distanceFromProject: distance,
-      },
-    });
+      // Save checkout location
+      db.attendanceLocation.create({
+        data: {
+          attendanceId: attendance.id,
+          latitude,
+          longitude,
+          accuracy,
+          recordedAt: serverReceivedAt,
+          source: "MOBILE",
+          insideGeofence: distance <= (attendance.project?.radiusM ?? 200),
+          distanceFromProject: distance,
+        },
+      }),
 
-    // Notification
-    await db.notification.create({
-      data: {
-        companyId: employee.companyId,
-        type: "ATTENDANCE",
-        title: `${employee.firstName} checked out`,
-        description: `${formatTimeInTimezone(serverReceivedAt, employee.company.timezone)} • ${formatMins(workingMins)} worked`,
-        timeAgo: "Just now",
-        unread: true,
-      },
-    });
+      // Notification
+      db.notification.create({
+        data: {
+          companyId: employee.companyId,
+          type: "ATTENDANCE",
+          title: `${employee.firstName} checked out`,
+          description: `${formatTimeInTimezone(serverReceivedAt, employee.company.timezone)} • ${formatMins(workingMins)} worked`,
+          timeAgo: "Just now",
+          unread: true,
+        },
+      }),
+    ]);
 
     emitCheckout({ employeeId: employee.id, employeeName: `${employee.firstName} ${employee.lastName}` });
 

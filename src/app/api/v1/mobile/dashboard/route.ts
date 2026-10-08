@@ -30,6 +30,14 @@ export async function GET(req: Request) {
     });
     if (!employee) throw ERRORS.NOT_FOUND("Employee not found");
 
+    // The accuracy ceiling check-in enforces. Read here so the app can warn
+    // before spending an upload on a fix the server would reject anyway.
+    const accuracySetting = await db.setting.findUnique({
+      where: { companyId_key: { companyId: employee.companyId, key: "MAX_GPS_ACCURACY" } },
+      select: { value: true },
+    });
+    const maxGpsAccuracy = Number(accuracySetting?.value ?? 50) || 50;
+
     // Today's attendance. An employee can work several sessions in one day, so
     // all of them are read: the live one drives the timer, and the closed ones
     // contribute to the day's total.
@@ -96,6 +104,10 @@ export async function GET(req: Request) {
         code: employee.company.code,
         timezone: employee.company.timezone,
       },
+      // The client needs the same ceiling the server enforces, otherwise it
+      // blocks a check-in the server would have accepted (or lets one through
+      // only to have it rejected).
+      maxGpsAccuracy: maxGpsAccuracy,
       today,
       projects: employee.assignments.map((a) => ({
         id: a.project.id,

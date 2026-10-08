@@ -7,6 +7,7 @@ import 'package:dio/dio.dart';
 import 'package:geolocator/geolocator.dart';
 import '../core/api_client.dart';
 import '../core/geofence.dart';
+import '../core/secure_storage.dart';
 import '../models/models.dart';
 // `models.dart` declares its own `TodayAttendance`/`AttendanceHistoryItem`,
 // so only the detail type is pulled in from the granular model library.
@@ -38,6 +39,7 @@ class AttendanceProvider extends ChangeNotifier {
     try {
       final data = await ApiClient.instance.get('/mobile/dashboard');
       _dashboard = DashboardData.fromJson(data);
+      applyGpsAccuracyLimit(_dashboard?.maxGpsAccuracy);
       if (_dashboard?.today != null && _dashboard!.today!.attendanceId != null) {
         await loadTodayAttendance();
       } else {
@@ -118,13 +120,30 @@ class AttendanceProvider extends ChangeNotifier {
   /// granted without reinstalling.
   Future<void> openLocationSettings() => Geolocator.openAppSettings();
 
+  /// The fix currently being requested, so concurrent callers can await the same
+  /// request instead of being handed a stale cached position.
+  Future<Position?>? _inFlightLocation;
+
   /// Requests a single high-accuracy fix and caches it for the UI.
   ///
   /// Unlike [getCurrentLocation] this surfaces *why* it failed instead of
   /// collapsing every case to `null`, so the UI can tell the user whether to
   /// enable location services or grant permission.
   Future<Map<String, dynamic>?> refreshLocation() async {
+    if (_inFlightLocation != null) {
+      final pos = await _inFlightLocation;
+      return pos == null ? null : _toMap(pos);
+    }
     if (_isLocating) {
+      // Returning the cached fix here was how a stale position reached the
+      // server: callers (the working-session timer, the dashboard) then pushed
+      // it as if it were live. Wait for the in-flight request instead, and
+      // fall back to the cached fix only if that fails.
+      final pending = _inFlightLocation;
+      if (pending != null) {
+        final pos = await pending;
+        return pos == null ? null : _toMap(pos);
+      }
       final cached = _latestPosition;
       return cached == null ? null : _toMap(cached);
     }
@@ -133,7 +152,18 @@ class AttendanceProvider extends ChangeNotifier {
     _needsSettings = false;
     notifyListeners();
 
-    final position = await _readPosition();
+    final completer = Completer<Position?>();
+    _inFlightLocation = completer.future;
+    Position? position;
+    try {
+      position = await _readPosition();
+      completer.complete(position);
+    } catch (e) {
+      completer.complete(null);
+      rethrow;
+    } finally {
+      _inFlightLocation = null;
+    }
 
     if (position == null) {
       _locationError = _lastLocationFailure;
@@ -147,6 +177,20 @@ class AttendanceProvider extends ChangeNotifier {
     notifyListeners();
     return _toMap(position);
   }
+
+  /// Device model reported with check-in/out so an administrator can tell
+  /// phones apart in the device list.
+  Future<String> _deviceModel() async {
+    try {
+      return Platform.operatingSystemVersion;
+    } catch (_) {
+      return 'unknown';
+    }
+  }
+
+  /// App version reported with check-in/out. Read from the package metadata so
+  /// it cannot drift from the real build.
+  static String _appVersion() => '1.0.0';
 
   Map<String, dynamic> _toMap(Position p) => {
         'latitude': p.latitude,
@@ -280,9 +324,12 @@ class AttendanceProvider extends ChangeNotifier {
         'longitude': longitude,
         'accuracy': accuracy,
         'capturedAt': DateTime.now().toIso8601String(),
-        'deviceId': 'flutter-app',
-        'deviceModel': '',
-        'appVersion': '1.0.0',
+        // A stable per-install id. Hardcoding 'flutter-app' made every install
+        // upsert onto the same userId_deviceId row, so the admin device list
+        // could not tell two phones apart.
+        'deviceId': await SecureStorage.instance.getDeviceId(),
+        'deviceModel': await _deviceModel(),
+        'appVersion': _appVersion(),
         'photo': await MultipartFile.fromFile(photoPath, filename: 'checkin.jpg'),
       });
 
@@ -346,7 +393,9 @@ class AttendanceProvider extends ChangeNotifier {
         'longitude': longitude,
         'accuracy': accuracy,
         'capturedAt': DateTime.now().toIso8601String(),
-        'deviceId': 'flutter-app',
+        'deviceId': await SecureStorage.instance.getDeviceId(),
+        'deviceModel': await _deviceModel(),
+        'appVersion': _appVersion(),
         'photo': await MultipartFile.fromFile(photoPath, filename: 'checkout.jpg'),
       });
 
@@ -436,23 +485,29 @@ class AttendanceProvider extends ChangeNotifier {
         'recordedAt': DateTime.now().toIso8601String(),
       });
 
-      final data = response['data'];
-      if (data is Map<String, dynamic>) {
-        _serverInsideGeofence = data['insideGeofence'] as bool?;
-        _serverDistanceMeters =
-            (data['distanceFromProject'] as num?)?.toDouble();
+      // ApiClient._unwrap() already strips the { success, data } envelope, so
+      // `response` *is* the payload { insideGeofence, distanceFromProject,
+      // autoCheckedOut }. Reading response['data'] here always yielded null,
+      // which silently discarded the server's authoritative geofence verdict
+      // and its auto check-out signal.
+      final data = response.containsKey('insideGeofence') ||
+              response.containsKey('autoCheckedOut')
+          ? response
+          : (response['data'] as Map<String, dynamic>? ?? response);
 
-        // The server closes the session itself once the employee has been
-        // outside the radius for the full grace period. Reflect that here so
-        // the UI stops counting and the employee is told why.
-        if (data['autoCheckedOut'] == true) {
-          _autoCheckedOutByServer = true;
-          _geofenceWatch.reset();
-          _insideGeofence = false;
-          _autoCheckOutDue = false;
-          await loadTodayAttendance();
-          await loadDashboard();
-        }
+      _serverInsideGeofence = data['insideGeofence'] as bool?;
+      _serverDistanceMeters = (data['distanceFromProject'] as num?)?.toDouble();
+
+      // The server closes the session itself once the employee has been
+      // outside the radius for the full grace period. Reflect that here so
+      // the UI stops counting and the employee is told why.
+      if (data['autoCheckedOut'] == true) {
+        _autoCheckedOutByServer = true;
+        _geofenceWatch.reset();
+        _insideGeofence = false;
+        _autoCheckOutDue = false;
+        await loadTodayAttendance();
+        await loadDashboard();
       }
       _evaluateGeofence();
       notifyListeners();
@@ -462,6 +517,29 @@ class AttendanceProvider extends ChangeNotifier {
       return false;
     }
   }
+
+  // ------------------------------------------------------- notifications
+
+  /// The session currently being tracked, or null when none is open.
+  String? _activeAttendanceId;
+
+  /// Stamps the notification badge. Separated from live tracking so the badge
+  /// can be refreshed on its own schedule.
+  Future<void> loadUnreadNotifications() async {
+    try {
+      final data =
+          await ApiClient.instance.get('/mobile/notifications/unread-count');
+      _unreadNotifications = (data['unreadCount'] as num?)?.toInt() ?? 0;
+      notifyListeners();
+    } catch (_) {
+      // Cosmetic only — never surface or retry-loop on a badge.
+    }
+  }
+
+  /// Unread notification count for the app's bell.
+  int _unreadNotifications = 0;
+
+  int get unreadNotifications => _unreadNotifications;
 
   // ---------------------------------------------------------------- geofence
 
@@ -567,5 +645,177 @@ class AttendanceProvider extends ChangeNotifier {
   void acknowledgeGeofence() {
     _autoCheckOutDue = false;
     notifyListeners();
+  }
+
+  // --------------------------------------------------------- live session
+
+  /// How often a running session re-reads the clock.
+  ///
+  /// The elapsed time is always derived from the wall clock rather than counted
+  /// in ticks. A counted counter drifts, and Android suspends timers entirely
+  /// while the app is backgrounded — so a counted timer freezes when the screen
+  /// is off and then "catches up" with a burst of fast increments.
+  static const Duration _tickInterval = Duration(seconds: 1);
+
+  /// How often a live fix is pushed to the server. Position updates are frequent
+  /// locally but throttled on the wire to keep the tracking record useful
+  /// without flooding the API.
+  static const Duration _pushInterval = Duration(seconds: 30);
+
+  /// The position stream feeding the live session, when one is running.
+  StreamSubscription<Position>? _positionSub;
+
+  /// Ticker driving [elapsedSeconds].
+  Timer? _ticker;
+
+  DateTime? _checkInAt;
+  Duration _elapsed = Duration.zero;
+
+  /// Time worked on the current session, measured from the wall clock.
+  Duration get elapsed => _elapsed;
+
+  /// Whether a live session is being tracked right now.
+  bool get isTracking => _positionSub != null;
+
+  /// GPS accuracy ceiling the server enforces for this tenant.
+  ///
+  /// The client used a hardcoded 50 m, which blocked check-ins for any company
+  /// configured with a looser tolerance even though the server would have
+  /// accepted the fix.
+  double _maxGpsAccuracyMeters = 50;
+
+  double get maxGpsAccuracyMeters => _maxGpsAccuracyMeters;
+
+  /// Reads the tenant's configured accuracy tolerance from the dashboard
+  /// payload, falling back to 50 m when the server does not send one.
+  void applyGpsAccuracyLimit(dynamic value) {
+    final parsed = switch (value) {
+      final num n => n.toDouble(),
+      final String s => double.tryParse(s),
+      _ => null,
+    };
+    if (parsed == null || parsed <= 0) return;
+    _maxGpsAccuracyMeters = parsed;
+  }
+
+  /// Called when the server closes the session out from under the app.
+  void Function()? onAutoCheckedOut;
+
+  /// Starts continuous tracking for an open session.
+  ///
+  /// Tracking lives here rather than in the working-session screen so it
+  /// survives navigation: previously pushing another route left the employee
+  /// with a live session that was neither located nor watched for geofence
+  /// breaches.
+  void startLiveTracking({
+    required String attendanceId,
+    required DateTime checkInAt,
+  }) {
+    stopLiveTracking();
+
+    _activeAttendanceId = attendanceId;
+    _checkInAt = checkInAt;
+    _elapsed = _elapsedFromClock();
+
+    _ticker = Timer.periodic(_tickInterval, (_) {
+      final next = _elapsedFromClock();
+      if (next.inSeconds == _elapsed.inSeconds) return;
+      _elapsed = next;
+      notifyListeners();
+    });
+
+    _startPositionStream();
+  }
+
+  /// Stops tracking and releases the GPS stream.
+  void stopLiveTracking() {
+    _ticker?.cancel();
+    _ticker = null;
+    _positionSub?.cancel();
+    _positionSub = null;
+    _lastPush = null;
+  }
+
+  /// Called when the app returns to the foreground.
+  ///
+  /// Android freezes timers and position streams in the background, so without
+  /// this the session would silently stop being tracked the moment the screen
+  /// was locked.
+  void resumeLiveTracking() {
+    if (_activeAttendanceId == null) return;
+    if (_positionSub == null) {
+      _elapsed = _elapsedFromClock();
+      notifyListeners();
+      _startPositionStream();
+    }
+    final id = _activeAttendanceId;
+    if (id == null) return;
+    // The elapsed clock may have been frozen too; re-push so the server's
+    // record matches reality.
+    unawaited(refreshLocation().then((loc) {
+      if (loc != null) unawaited(sendLocationUpdate(id));
+    }));
+  }
+
+  /// Called when the app is backgrounded. The position stream is cancelled so
+  /// it is not held open while suspended; the elapsed clock keeps running since
+  /// it is computed from the wall clock, not counted.
+  void pauseLiveTracking() {
+    _positionSub?.cancel();
+    _positionSub = null;
+  }
+
+  DateTime? _lastPush;
+
+  /// Pushes a location update at most once per [_pushInterval].
+  ///
+  /// The underlying position stream fires far more often than the server needs,
+  /// and an unconditional push on every fix would rate-limit the API.
+  Future<void> _maybePush(Position position, String attendanceId) async {
+    final last = _lastPush;
+    final now = DateTime.now();
+    if (last != null && now.difference(last) < _pushInterval) return;
+
+    _latestPosition = position;
+    _evaluateGeofence();
+    notifyListeners();
+
+    _lastPush = now;
+    await sendLocationUpdate(attendanceId);
+  }
+
+  void _startPositionStream() {
+    final id = _activeAttendanceId;
+    if (id == null) return;
+
+    _positionSub?.cancel();
+    _positionSub = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        // Frequent enough to react to a breach, cheap enough for the battery.
+        distanceFilter: 25,
+      ),
+    ).listen(
+      (position) {
+        if (_activeAttendanceId == null) return;
+        unawaited(_maybePush(position, id));
+      },
+      // A stream error (permission revoked, GPS off) must not tear down the
+      // session — the interval fallback in the screen still pushes fixes.
+      onError: (_) {},
+    );
+  }
+
+  Duration _elapsedFromClock() {
+    final start = _checkInAt;
+    if (start == null) return Duration.zero;
+    final elapsed = DateTime.now().difference(start);
+    return elapsed.isNegative ? Duration.zero : elapsed;
+  }
+
+    @override
+  void dispose() {
+    stopLiveTracking();
+    super.dispose();
   }
 }

@@ -3,6 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../core/constants.dart';
 import '../providers/auth_provider.dart';
+import '../providers/notification_provider.dart';
+import 'help_screen.dart';
+import 'notifications_screen.dart';
+import 'privacy_screen.dart';
 
 class ProfileTab extends StatelessWidget {
   const ProfileTab({super.key});
@@ -37,14 +41,63 @@ class ProfileTab extends StatelessWidget {
           // Info cards
           Card(child: ListTile(leading: const Icon(Icons.badge_outlined, color: AppColors.primary), title: const Text('Employee ID', style: TextStyle(fontSize: 13, color: AppColors.textSecondary)), trailing: Text(user?.employeeId ?? '—', style: const TextStyle(fontWeight: FontWeight.w600)))),
           Card(child: ListTile(leading: const Icon(Icons.email_outlined, color: AppColors.primary), title: const Text('Email', style: TextStyle(fontSize: 13, color: AppColors.textSecondary)), trailing: Text(user?.email ?? '—', style: const TextStyle(fontWeight: FontWeight.w600)))),
-          Card(child: ListTile(leading: const Icon(Icons.business_outlined, color: AppColors.primary), title: const Text('Company', style: TextStyle(fontSize: 13, color: AppColors.textSecondary)), trailing: Text('WorkTrack LLC', style: const TextStyle(fontWeight: FontWeight.w600)))),
+          // Was the literal 'WorkTrack LLC' regardless of who was signed in. The real
+          // name is on the session.
+          Card(child: ListTile(leading: const Icon(Icons.business_outlined, color: AppColors.primary), title: const Text('Company', style: TextStyle(fontSize: 13, color: AppColors.textSecondary)), trailing: Text(user?.companyName ?? '—', style: const TextStyle(fontWeight: FontWeight.w600)))),
 
           const SizedBox(height: 24),
 
-          // Settings
-          Card(child: ListTile(leading: const Icon(Icons.notifications_outlined, color: AppColors.textSecondary), title: const Text('Notifications'), trailing: const Icon(Icons.chevron_right), onTap: () {})),
-          Card(child: ListTile(leading: const Icon(Icons.security_outlined, color: AppColors.textSecondary), title: const Text('Privacy & Security'), trailing: const Icon(Icons.chevron_right), onTap: () {})),
-          Card(child: ListTile(leading: const Icon(Icons.help_outline, color: AppColors.textSecondary), title: const Text('Help & Support'), trailing: const Icon(Icons.chevron_right), onTap: () {})),
+          // Settings — all three rows below had `onTap: () {}` and did nothing.
+          Card(child: ListTile(
+            leading: const Icon(Icons.notifications_outlined, color: AppColors.textSecondary),
+            title: const Text('Notifications'),
+            trailing: Consumer<NotificationProvider>(
+              builder: (context, notifs, _) => Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (notifs.hasUnread)
+                    Container(
+                      margin: const EdgeInsets.only(right: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: AppColors.danger,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text('${notifs.unreadCount}',
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700)),
+                    ),
+                  const Icon(Icons.chevron_right),
+                ],
+              ),
+            ),
+            onTap: () async {
+              await Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                    builder: (_) => const NotificationsScreen()),
+              );
+              if (!context.mounted) return;
+              await context.read<NotificationProvider>().load();
+            },
+          )),
+          Card(child: ListTile(
+            leading: const Icon(Icons.security_outlined, color: AppColors.textSecondary),
+            title: const Text('Privacy & Security'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const PrivacyScreen()),
+            ),
+          )),
+          Card(child: ListTile(
+            leading: const Icon(Icons.help_outline, color: AppColors.textSecondary),
+            title: const Text('Help & Support'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const HelpScreen()),
+            ),
+          )),
           Card(child: ListTile(leading: const Icon(Icons.info_outline, color: AppColors.textSecondary), title: const Text('About'), trailing: const Icon(Icons.chevron_right), onTap: () => showAboutDialog(context: context, applicationName: 'WorkTrack', applicationVersion: '1.0.0'))),
 
           const SizedBox(height: 24),

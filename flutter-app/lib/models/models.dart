@@ -282,6 +282,10 @@ class DashboardData {
   final List<Project> projects;
   final List<AttendanceHistoryItem> recentAttendance;
 
+  /// GPS accuracy ceiling the server enforces for this tenant, in metres.
+  /// Null when the server did not send one, so callers can fall back.
+  final double? maxGpsAccuracy;
+
   DashboardData({
     this.employeeName,
     this.employeeId,
@@ -290,6 +294,7 @@ class DashboardData {
     this.companyName,
     this.companyCode,
     this.timezone,
+    this.maxGpsAccuracy,
     this.today,
     required this.projects,
     required this.recentAttendance,
@@ -308,6 +313,7 @@ class DashboardData {
       companyName: company['name'],
       companyCode: company['code'],
       timezone: company['timezone'],
+      maxGpsAccuracy: (json['maxGpsAccuracy'] as num?)?.toDouble(),
       today: today != null ? TodayAttendance.fromJson(today) : null,
       projects: (json['projects'] as List<dynamic>? ?? [])
           .map((p) => Project.fromJson(p as Map<String, dynamic>))

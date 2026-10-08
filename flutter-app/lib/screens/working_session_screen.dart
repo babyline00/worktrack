@@ -17,10 +17,6 @@ class WorkingSessionScreen extends StatefulWidget {
 }
 
 class _WorkingSessionScreenState extends State<WorkingSessionScreen> {
-  Timer? _timer;
-  Timer? _locationTimer;
-  int _elapsedSeconds = 0;
-
   /// Guards the auto check-out so it is only ever offered once per breach.
   bool _autoCheckoutHandled = false;
 
@@ -29,13 +25,6 @@ class _WorkingSessionScreenState extends State<WorkingSessionScreen> {
     super.initState();
     final provider = context.read<AttendanceProvider>();
     final att = provider.todayAttendance;
-    if (att?.checkInAt != null) {
-      final checkIn = DateTime.tryParse(att!.checkInAt!) ?? DateTime.now();
-      // Clamp at zero: a server timestamp a few seconds ahead (clock skew, or
-      // a record seeded in the future) would otherwise render a negative timer.
-      _elapsedSeconds =
-          DateTime.now().difference(checkIn).inSeconds.clamp(0, 1 << 31);
-    }
 
     // Measure live positions against the site this session was checked into.
     provider.configureGeofence(
@@ -44,34 +33,39 @@ class _WorkingSessionScreenState extends State<WorkingSessionScreen> {
       radiusMeters: att?.projectRadiusMeters,
     );
 
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+    // Tracking now lives in the provider, so it keeps running while the user is
+    // on another screen or has the phone in their pocket. The screen only
+    // renders it.
+    final checkIn = att?.checkInAt == null
+        ? DateTime.now()
+        : (DateTime.tryParse(att!.checkInAt!) ?? DateTime.now());
+    provider.startLiveTracking(
+      attendanceId: widget.attendanceId,
+      checkInAt: checkIn,
+    );
+    provider.onAutoCheckedOut = () {
       if (!mounted) return;
-      setState(() => _elapsedSeconds++);
-    });
+      _maybeAutoCheckOut(provider);
+    };
 
-    // Prime the location cache immediately, then keep it warm on an interval so
-    // the tracker reads a fresh fix instead of waiting 2 minutes for the first
-    // one (and so the UI has something to display right away).
+    // Prime the display with a fix immediately rather than waiting for the
+    // first one from the stream.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final provider = context.read<AttendanceProvider>();
-      provider.refreshLocation().then((loc) {
-        if (loc != null) provider.sendLocationUpdate(widget.attendanceId);
-      });
-      _locationTimer = Timer.periodic(const Duration(minutes: 1), (_) {
-        if (!mounted) return;
-        provider.refreshLocation().then((loc) {
-          if (loc != null) provider.sendLocationUpdate(widget.attendanceId);
-        });
+      unawaited(provider.refreshLocation().then((loc) {
+        if (loc != null) {
+          unawaited(provider.sendLocationUpdate(widget.attendanceId));
+        }
         _maybeAutoCheckOut(provider);
-      });
+      }));
     });
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
-    _locationTimer?.cancel();
+    // The session outlives this screen — deliberately not stopping tracking
+    // here. Only the auto check-out prompt belongs to this screen.
+    context.read<AttendanceProvider>().onAutoCheckedOut = null;
     super.dispose();
   }
 
@@ -185,8 +179,18 @@ class _WorkingSessionScreenState extends State<WorkingSessionScreen> {
               const SizedBox(height: 16),
               const Text('WORKING', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.success, letterSpacing: 2)),
               const SizedBox(height: 24),
-              // Timer
-              Text(_formatDuration(_elapsedSeconds), style: const TextStyle(fontSize: 56, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+              // Timer — read from the provider's wall clock, so it stays
+              // correct across screen-off and app backgrounding.
+              Text(
+                _formatDuration(provider.elapsed.inSeconds),
+                style: const TextStyle(
+                    fontSize: 56, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Started ${att?.checkInAt == null ? '—' : DateTime.parse(att!.checkInAt!).toLocal().toString().substring(11, 16)}',
+                style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+              ),
               const SizedBox(height: 32),
               // Info cards
               _InfoRow(label: 'Project', value: att?.projectName ?? '—'),

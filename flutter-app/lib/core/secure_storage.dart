@@ -9,9 +9,12 @@ class SecureStorage {
   SecureStorage._();
   static final SecureStorage instance = SecureStorage._();
 
-  static const _kAccessToken = 'wt_access_token';
-  static const _kRefreshToken = 'wt_refresh_token';
-  static const _kUser = 'wt_user';
+  // These keys MUST match the ones ApiClient writes. They were `wt_`-prefixed
+  // and entirely disjoint, so SecureStorage was reading keys nothing ever wrote
+  // (always null) and clearAll() left the real tokens in place on sign-out.
+  static const _kAccessToken = 'access_token';
+  static const _kRefreshToken = 'refresh_token';
+  static const _kUser = 'user';
   static const _kDeviceId = 'wt_device_id';
 
   final FlutterSecureStorage _storage = const FlutterSecureStorage(
@@ -71,7 +74,19 @@ class SecureStorage {
   }
 
   // ---------- clear all ----------
-  Future<void> clearAll() async {
+  /// Removes every stored credential. Static because sign-out must be able to
+  /// clear storage even where no instance has been constructed.
+  static Future<void> clearAll() async {
+    const storage = FlutterSecureStorage(
+      aOptions: AndroidOptions(encryptedSharedPreferences: true),
+      iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock),
+    );
+    await storage.delete(key: _kAccessToken);
+    await storage.delete(key: _kRefreshToken);
+    await storage.delete(key: _kUser);
+  }
+
+  Future<void> clearInstance() async {
     await _storage.delete(key: _kAccessToken);
     await _storage.delete(key: _kRefreshToken);
     await _storage.delete(key: _kUser);
