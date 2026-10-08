@@ -21,6 +21,19 @@ function parseCoord(value: unknown, min: number, max: number): number | null {
   return n;
 }
 
+/**
+ * Normalises a nullable text field.
+ *
+ * `String(null)` is the literal text "null" and `String(undefined)` is
+ * "undefined" — both truthy, so a plain `String(x) || null` silently writes the
+ * word into the database instead of clearing the field.
+ */
+function toNullableText(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
+  return text === "" ? null : text;
+}
+
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -107,10 +120,10 @@ export async function POST(req: Request) {
     data: {
       code,
       name,
-      client: body.client ? String(body.client).trim() : null,
-      description: body.description ? String(body.description).trim() : null,
+      client: toNullableText(body.client),
+      description: toNullableText(body.description),
       status,
-      location: body.location ? String(body.location).trim() : null,
+      location: toNullableText(body.location),
       lat: hasCoords ? lat : null,
       lng: hasCoords ? lng : null,
       // 0 is how the UI spells "no limit"; the API needs a real large radius

@@ -9,6 +9,20 @@ const STATUSES = ["ACTIVE", "PAUSED", "COMPLETED"] as const;
 /** A radius this large is how "no limit" is represented (see POST /api/projects). */
 const NO_LIMIT_RADIUS = 9999999;
 
+/**
+ * Normalises a nullable text field.
+ *
+ * `String(null)` is the literal text "null" and `String(undefined)` is
+ * "undefined" — both truthy, so a plain `String(x) || null` silently writes the
+ * word into the database instead of clearing the field. Nullish and blank
+ * values become a real NULL.
+ */
+function toNullableText(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
+  return text === "" ? null : text;
+}
+
 async function authedCompany() {
   const session = await getServerSession(authOptions);
   if (!session?.user) return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
@@ -46,9 +60,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     data.code = code;
   }
 
-  if (body.client !== undefined) data.client = String(body.client).trim() || null;
-  if (body.description !== undefined) data.description = String(body.description).trim() || null;
-  if (body.location !== undefined) data.location = String(body.location).trim() || null;
+  if (body.client !== undefined) data.client = toNullableText(body.client);
+  if (body.description !== undefined) data.description = toNullableText(body.description);
+  if (body.location !== undefined) data.location = toNullableText(body.location);
 
   if (body.status !== undefined) {
     const status = String(body.status).toUpperCase();
