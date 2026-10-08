@@ -19,6 +19,7 @@ type SessionLegSource = {
   checkOutLocation: string | null;
   checkOutPhotoId: string | null;
   insideGeofence: boolean;
+  photos: { id: string; type: string }[];
   project: { lat: number | null; lng: number | null; radiusM: number | null } | null;
 };
 
@@ -44,13 +45,20 @@ function sessionLeg(att: SessionLegSource | undefined, which: "checkIn" | "check
       haversineMeters(project.lat, project.lng, lat, lng) <= (project.radiusM ?? 200);
   }
 
+  // The `*PhotoId` columns were only added by the routes that store the photo,
+  // so rows written earlier have them null even though the selfie exists on the
+  // `photos` relation. Fall back to that so existing history keeps rendering.
+  const storedPhotoId = (isIn ? att.checkInPhotoId : att.checkOutPhotoId) || null;
+  const photoId =
+    storedPhotoId ?? att.photos.find((p) => p.type === (isIn ? "CHECK_IN" : "CHECK_OUT"))?.id ?? null;
+
   return {
     at: at.toISOString(),
     time: at.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }),
     coords: lat != null && lng != null ? { lat, lng } : null,
     location: (isIn ? att.checkInLocation : att.checkOutLocation) || null,
     accuracyM: (isIn ? att.checkInAccuracy : att.checkOutAccuracy) ?? null,
-    photoId: (isIn ? att.checkInPhotoId : att.checkOutPhotoId) || null,
+    photoId,
     insideGeofence,
   };
 }
@@ -78,6 +86,7 @@ export async function GET() {
         orderBy: { checkIn: "desc" },
         include: {
           project: true,
+          photos: { select: { id: true, type: true } },
           locations: { orderBy: { recordedAt: "desc" }, take: 1 },
         },
       },
@@ -117,6 +126,9 @@ export async function GET() {
           ? { lat: e.assignments[0].project.lat ?? 0, lng: e.assignments[0].project.lng ?? 0 }
           : { lat: 0, lng: 0 };
 
+    const checkInLeg = sessionLeg(todayAtt, "checkIn");
+    const checkOutLeg = sessionLeg(todayAtt, "checkOut");
+
     result.push({
       id: e.id,
       empId: e.empId,
@@ -140,13 +152,13 @@ export async function GET() {
       workingTimeMins: todayAtt?.workingMins ?? 0,
       accuracyM: todayAtt?.checkInAccuracy ?? 0,
       lastUpdatedSec: todayAtt?.checkIn ? Math.max(5, Math.round((Date.now() - todayAtt.checkIn.getTime()) / 60000) * 60) : 5,
-      photoCaptured: !!todayAtt?.checkInPhotoId,
+      photoCaptured: checkInLeg?.photoId != null,
       insideGeofence: todayAtt?.insideGeofence ?? true,
       // Per-leg check-in / check-out detail. The Live Attendance drawer shows
       // both legs side by side, so the two need to stay distinguishable
       // instead of being merged into one set of fields.
-      checkInDetail: sessionLeg(todayAtt, "checkIn"),
-      checkOutDetail: sessionLeg(todayAtt, "checkOut"),
+      checkInDetail: checkInLeg,
+      checkOutDetail: checkOutLeg,
       // Real-time stats
       presentThisMonth: presentCount,
       lateThisMonth: lateCount,
