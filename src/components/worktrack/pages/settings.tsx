@@ -93,7 +93,26 @@ export function SettingsPage() {
               <p className="mb-4 text-sm font-semibold text-navy">Geofence & Auto</p>
               <div className="space-y-3">
                 <ToggleRow icon={MapPin} label="Enable Geofence" desc="Require employees to be inside project geofence to check in" checked={local.GEOFENCE_ENABLED === "true"} onChange={(v) => set("GEOFENCE_ENABLED", String(v))} />
-                <ToggleRow icon={CalendarCheck} label="Auto Check-Out" desc="Automatically check out employees after shift ends" checked={local.AUTO_CHECKOUT === "true"} onChange={(v) => set("AUTO_CHECKOUT", String(v))} />
+                <ToggleRow icon={CalendarCheck} label="Auto Check-Out" desc="Close a session automatically once the employee has been outside the project radius for too long" checked={local.AUTO_CHECKOUT === "true"} onChange={(v) => set("AUTO_CHECKOUT", String(v))} />
+                {local.AUTO_CHECKOUT === "true" && (
+                  <div>
+                    <Label>Grace period before auto check-out (minutes)</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={local.GEOFENCE_AUTO_CHECKOUT_MINS ?? "5"}
+                      onChange={(e) =>
+                        set("GEOFENCE_AUTO_CHECKOUT_MINS", e.target.value)
+                      }
+                      className="mt-1"
+                    />
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Time outside the radius before the session is closed. The
+                      clock resets if the employee returns, and the closed record
+                      is flagged for review because no selfie can be taken.
+                    </p>
+                  </div>
+                )}
               </div>
             </Card>
             <div className="flex justify-end"><Button onClick={save} disabled={updateSettings.isPending}><Save size={14} className="mr-2" /> {updateSettings.isPending ? "Saving..." : "Save Settings"}</Button></div>

@@ -66,7 +66,7 @@ async function seedStep1() {
   ], skipDuplicates: true });
 
   // Settings
-  const settings = [["REQUIRE_PHOTO","true"],["REQUIRE_LOCATION","true"],["MAX_GPS_ACCURACY","50"],["GEOFENCE_ENABLED","true"],["DEFAULT_RADIUS","200"],["AUTO_CHECKOUT","false"],["PASSWORD_MIN_LENGTH","8"],["SESSION_TIMEOUT","30"],["LOGIN_ATTEMPT_LIMIT","5"],["NOTIFY_LATE","true"],["NOTIFY_ABSENT","true"],["NOTIFY_LEAVE","true"],["NOTIFY_GEOFENCE","true"]];
+  const settings = [["REQUIRE_PHOTO","true"],["REQUIRE_LOCATION","true"],["MAX_GPS_ACCURACY","50"],["GEOFENCE_ENABLED","true"],["DEFAULT_RADIUS","200"],["AUTO_CHECKOUT","true"], ["GEOFENCE_AUTO_CHECKOUT_MINS","5"],["PASSWORD_MIN_LENGTH","8"],["SESSION_TIMEOUT","30"],["LOGIN_ATTEMPT_LIMIT","5"],["NOTIFY_LATE","true"],["NOTIFY_ABSENT","true"],["NOTIFY_LEAVE","true"],["NOTIFY_GEOFENCE","true"]];
   for (const [k, v] of settings) {
     await db.setting.upsert({ where: { companyId_key: { companyId: company.id, key: k } }, update: { value: v }, create: { companyId: company.id, key: k, value: v } });
   }

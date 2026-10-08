@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import bcrypt from "bcryptjs";
 
@@ -84,7 +85,7 @@ async function main() {
   );
 
   // 5. Employees
-  const employees = [];
+  const employees: Awaited<ReturnType<typeof db.employee.upsert>>[] = [];
   for (let i = 0; i < 48; i++) {
     const first = FIRST_NAMES[i % FIRST_NAMES.length];
     const last = LAST_NAMES[(i * 3) % LAST_NAMES.length];
@@ -250,7 +251,7 @@ async function main() {
   const settings = [
     ["REQUIRE_PHOTO", "true"], ["REQUIRE_LOCATION", "true"], ["PREVENT_GALLERY", "true"],
     ["REQUIRE_GPS_ACCURACY", "true"], ["MAX_GPS_ACCURACY", "50"], ["GEOFENCE_ENABLED", "true"],
-    ["DEFAULT_RADIUS", "200"], ["AUTO_CHECKOUT", "false"], ["PASSWORD_MIN_LENGTH", "8"],
+    ["DEFAULT_RADIUS", "200"], ["AUTO_CHECKOUT", "true"], ["GEOFENCE_AUTO_CHECKOUT_MINS", "5"], ["PASSWORD_MIN_LENGTH", "8"],
     ["SESSION_TIMEOUT", "30"], ["LOGIN_ATTEMPT_LIMIT", "5"], ["REQUIRE_STRONG_PASSWORD", "true"],
     ["TWO_FACTOR_AUTH", "false"], ["NOTIFY_LATE", "true"], ["NOTIFY_ABSENT", "true"],
     ["NOTIFY_LEAVE", "true"], ["NOTIFY_GEOFENCE", "true"], ["NOTIFY_DAILY_SUMMARY", "false"],
