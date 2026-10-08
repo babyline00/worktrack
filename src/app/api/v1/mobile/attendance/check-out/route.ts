@@ -64,6 +64,13 @@ export async function POST(req: Request) {
     if (!photoFile.type.startsWith("image/")) throw ERRORS.VALIDATION("Photo must be an image");
     if (photoFile.size > 10 * 1024 * 1024) throw ERRORS.VALIDATION("Photo too large (max 10MB)");
 
+    // Geofence check for check-out — block if outside project area
+    const distance = attendance.project?.lat && attendance.project?.lng
+      ? haversineMeters(attendance.project.lat, attendance.project.lng, latitude, longitude)
+      : 0;
+    const projectRadius = attendance.project?.radiusM ?? 200;
+    const isOutside = distance > projectRadius;
+
     // Save photo
     const now = new Date();
     const y = now.getFullYear();
@@ -82,11 +89,8 @@ export async function POST(req: Request) {
 
     const serverReceivedAt = new Date();
     const workingMins = Math.max(0, Math.round((serverReceivedAt.getTime() - attendance.checkIn.getTime()) / 60000));
-    const distance = attendance.project?.lat && attendance.project?.lng
-      ? haversineMeters(attendance.project.lat, attendance.project.lng, latitude, longitude)
-      : 0;
 
-    // Update attendance
+    // Update attendance — mark verification as FLAGGED if outside geofence
     const updated = await db.attendance.update({
       where: { id: attendance.id },
       data: {
@@ -100,8 +104,10 @@ export async function POST(req: Request) {
         checkOutDeviceId: deviceId ?? null,
         workingMins,
         sessionStatus: "COMPLETED",
-        insideGeofence: distance <= (attendance.project?.radiusM ?? 200),
+        insideGeofence: !isOutside,
         distanceFromProject: distance,
+        // Flag if checked out outside geofence — admin can review
+        verificationStatus: isOutside ? "FLAGGED" : attendance.verificationStatus,
       },
     });
 
@@ -157,7 +163,13 @@ export async function POST(req: Request) {
           workingMinutes: workingMins,
           workingTime: formatMins(workingMins),
           checkOutPhoto: photoUrl,
+          insideGeofence: !isOutside,
+          distanceFromProject: distance,
+          verificationStatus: updated.verificationStatus,
         },
+        geofenceWarning: isOutside
+          ? `You checked out ${distance}m outside the project area (allowed: ${projectRadius}m). This has been flagged for admin review.`
+          : null,
       },
     };
 

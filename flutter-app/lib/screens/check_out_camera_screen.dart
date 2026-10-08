@@ -69,7 +69,23 @@ class _CheckOutCameraScreenState extends State<CheckOutCameraScreen> {
     );
 
     if (success && mounted) {
-      Navigator.pop(context);
+      // Check for geofence warning
+      final warning = att.geofenceWarning;
+      if (warning != null) {
+        // Show warning dialog before popping
+        showDialog(context: context, builder: (ctx) => AlertDialog(
+          title: const Row(children: [Icon(Icons.warning_amber_rounded, color: AppColors.warning), SizedBox(width: 8), Text('Geofence Alert')]),
+          content: Text(warning, style: const TextStyle(fontSize: 14)),
+          actions: [
+            ElevatedButton(
+              onPressed: () { Navigator.pop(ctx); Navigator.pop(context); },
+              child: const Text('OK'),
+            ),
+          ],
+        ));
+      } else {
+        Navigator.pop(context);
+      }
     } else if (mounted) {
       setState(() { _isUploading = false; });
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(att.error ?? 'Check-out failed'), backgroundColor: AppColors.danger));

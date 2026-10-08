@@ -123,9 +123,15 @@ export function EmployeeMobileView() {
       photo,
       location: employee?.location,
     }, {
-      onSuccess: () => {
+      onSuccess: (data: any) => {
         setCameraOpen(null);
         setTab("attendance");
+        // Show geofence warning if checked out outside project area
+        if (data?.geofenceWarning) {
+          toast.warning("Geofence Alert", { description: data.geofenceWarning });
+        } else {
+          toast.success("Checked out successfully");
+        }
       },
     });
   }

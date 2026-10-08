@@ -36,6 +36,15 @@ export async function POST(req: Request) {
     if (project?.lat && project?.lng && body.lat && body.lng) {
       distance = haversine(project.lat, project.lng, body.lat, body.lng);
       insideGeofence = distance <= project.radiusM;
+      // Block check-in if outside geofence (unless No Limit / very large radius)
+      if (!insideGeofence && project.radiusM < 999999) {
+        return NextResponse.json({
+          error: `You are ${distance}m outside the allowed project area (radius: ${project.radiusM}m). Please move closer to the project location to check in.`,
+          code: "OUTSIDE_GEOFENCE",
+          distance,
+          allowedRadius: project.radiusM,
+        }, { status: 400 });
+      }
     }
   }
 
