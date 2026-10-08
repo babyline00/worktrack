@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import {
-  requireRole,
+  requireAuth,
   apiSuccess,
   apiError,
   ApiError,
@@ -12,9 +12,15 @@ import {
 export const runtime = "nodejs";
 
 // GET /api/v1/attendance/:id
+//
+// Admins and managers can read any record in their company. Employees are also
+// allowed, but only their own: the Flutter app calls this for the attendance
+// detail screen, and it previously 403'd for employee tokens, so the screen
+// silently fell back to a photo-less summary and always said "No photo".
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const user = await requireRole(req, ["SUPER_ADMIN", "ADMIN", "MANAGER"]);
+    const user = await requireAuth(req);
+    const isPrivileged = ["SUPER_ADMIN", "ADMIN", "MANAGER"].includes(user.role);
     const att = await db.attendance.findUnique({
       where: { id: (await params).id },
       include: {
@@ -27,6 +33,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     });
     if (!att) throw ERRORS.NOT_FOUND("Attendance not found");
     if (att.companyId !== user.companyId) throw ERRORS.FORBIDDEN();
+    if (!isPrivileged && att.employeeId !== user.employeeId) {
+      throw ERRORS.FORBIDDEN("You can only view your own attendance records");
+    }
 
     return apiSuccess({
       id: att.id,
@@ -86,14 +95,18 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         insideGeofence: l.insideGeofence,
         distanceFromProject: l.distanceFromProject,
       })),
-      auditHistory: att.auditLogs.map((a) => ({
-        action: a.action,
-        performedBy: a.performedBy?.name ?? "System",
-        oldValue: a.oldValue ? JSON.parse(a.oldValue) : null,
-        newValue: a.newValue ? JSON.parse(a.newValue) : null,
-        reason: a.reason,
-        timestamp: a.createdAt.toISOString(),
-      })),
+      // Internal admin trail (who adjusted a record and why). Not shown to
+      // employees viewing their own record.
+      auditHistory: isPrivileged
+        ? att.auditLogs.map((a) => ({
+            action: a.action,
+            performedBy: a.performedBy?.name ?? "System",
+            oldValue: a.oldValue ? JSON.parse(a.oldValue) : null,
+            newValue: a.newValue ? JSON.parse(a.newValue) : null,
+            reason: a.reason,
+            timestamp: a.createdAt.toISOString(),
+          }))
+        : [],
     });
   } catch (err: any) {
     if (err instanceof ApiError) return apiError(err);
