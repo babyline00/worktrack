@@ -3,18 +3,24 @@
 import { useState } from "react";
 import {
   Plus,
-  MoreVertical,
   Users,
   MapPin,
   ArrowLeft,
   Pencil,
   Clock,
-  Crosshair,
-  Camera,
   ShieldCheck,
   Trash2,
 } from "lucide-react";
-import { useProjects, useEmployees, useCreateProject, useDeleteProject } from "@/lib/hooks";
+import {
+  useProjects,
+  useEmployees,
+  useCreateProject,
+  useUpdateProject,
+  useDeleteProject,
+  useSettings,
+  useUpdateSettings,
+  type Project,
+} from "@/lib/hooks";
 import { useApp } from "@/lib/store";
 import { Avatar, Card, PageHeader, StatusPill } from "../ui";
 import dynamic from "next/dynamic";
@@ -54,18 +60,29 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+
+/** Sentinel radius meaning "no geofence limit" — mirrors the API's constant. */
+const NO_LIMIT_RADIUS = 9999999;
 
 export function ProjectsPage() {
   const { selectedProjectId, setSelectedProject } = useApp();
   const { data: projData, isLoading } = useProjects();
   const [createOpen, setCreateOpen] = useState(false);
+  const [editing, setEditing] = useState<Project | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const projects = projData?.projects ?? [];
   const selected = projects.find((p) => p.id === selectedProjectId);
 
   if (selected) {
-    return <ProjectDetail project={selected} onBack={() => setSelectedProject(null)} />;
+    return (
+      <ProjectDetail
+        project={selected}
+        onBack={() => setSelectedProject(null)}
+        onEdit={() => setEditing(selected)}
+      />
+    );
   }
 
   if (isLoading) {
@@ -109,8 +126,14 @@ export function ProjectsPage() {
                     <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); setDeleteId(p.id); }}>
                       <Trash2 size={14} className="text-muted-foreground hover:text-danger" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => e.stopPropagation()}>
-                      <MoreVertical size={14} />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      title="Edit project"
+                      onClick={(e) => { e.stopPropagation(); setEditing(p); }}
+                    >
+                      <Pencil size={14} className="text-muted-foreground hover:text-navy" />
                     </Button>
                   </div>
                 </div>
@@ -146,13 +169,33 @@ export function ProjectsPage() {
         </div>
       )}
 
-      <CreateProjectDialog open={createOpen} onOpenChange={setCreateOpen} />
+      <ProjectFormDialog
+        key="create"
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+      />
+      {editing && (
+        <ProjectFormDialog
+          key={editing.id}
+          open
+          project={editing}
+          onOpenChange={(o) => !o && setEditing(null)}
+        />
+      )}
       <DeleteProjectDialog id={deleteId} onClose={() => setDeleteId(null)} />
     </div>
   );
 }
 
-function ProjectDetail({ project, onBack }: { project: any; onBack: () => void }) {
+function ProjectDetail({
+  project,
+  onBack,
+  onEdit,
+}: {
+  project: Project;
+  onBack: () => void;
+  onEdit: () => void;
+}) {
   const { setDrawerEmployee, setPage } = useApp();
   const { data: empData } = useEmployees();
   const projectEmployees = (empData?.employees ?? []).filter((e) => e.projectIds.includes(project.id));
@@ -176,10 +219,22 @@ function ProjectDetail({ project, onBack }: { project: any; onBack: () => void }
         subtitle={`${project.code} • ${project.client ?? "—"}`}
         actions={
           <>
-            <Badge variant="outline" className="border-0 bg-success-soft text-success">
-              <span className="mr-1 h-1.5 w-1.5 rounded-full bg-success pulse-live" />Active
+            <Badge
+              variant="outline"
+              className={cn(
+                "border-0 capitalize",
+                project.status === "active"
+                  ? "bg-success-soft text-success"
+                  : project.status === "paused"
+                    ? "bg-warning-soft text-warning"
+                    : "bg-muted text-muted-foreground",
+              )}
+            >
+              <span className="mr-1 h-1.5 w-1.5 rounded-full bg-current" />{project.status}
             </Badge>
-            <Button variant="outline" size="sm"><Pencil size={14} className="mr-2" /> Edit Project</Button>
+            <Button variant="outline" size="sm" onClick={onEdit}>
+              <Pencil size={14} className="mr-2" /> Edit Project
+            </Button>
           </>
         }
       />
@@ -210,8 +265,15 @@ function ProjectDetail({ project, onBack }: { project: any; onBack: () => void }
                 <MapPin size={16} className="mt-0.5 text-primary" />
                 <div>
                   <p className="font-medium text-navy">{project.location}</p>
-                  <p className="text-xs text-muted-foreground">Allowed Radius: {project.radiusM} meters</p>
-                  <p className="mt-1 font-mono text-xs text-muted-foreground">{project.coords.lat.toFixed(4)}, {project.coords.lng.toFixed(4)}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Allowed Radius:{" "}
+                    {project.radiusM >= NO_LIMIT_RADIUS
+                      ? "No limit"
+                      : `${project.radiusM} meters`}
+                  </p>
+                  <p className="mt-1 font-mono text-xs text-muted-foreground">
+                    {project.coords.lat.toFixed(4)}, {project.coords.lng.toFixed(4)}
+                  </p>
                 </div>
               </div>
               <div className="mt-4">
@@ -326,61 +388,154 @@ function ProjectDetail({ project, onBack }: { project: any; onBack: () => void }
   );
 }
 
-function ProjectSettings({ project }: { project: any }) {
-  const [photo, setPhoto] = useState(true);
-  const [location, setLocation] = useState(true);
-  const [gallery, setGallery] = useState(true);
-  const [geofence, setGeofence] = useState(true);
-  const [radius, setRadius] = useState(project.radiusM.toString());
+/**
+ * Geofence quick-edit. These previously looked like working controls but only
+ * mutated local state that was discarded on unmount, so an admin could change
+ * the radius here and see nothing persist. Radius and location are real
+ * project fields and are now saved.
+ */
+function ProjectSettings({ project }: { project: Project }) {
+  const updateProject = useUpdateProject();
+  const noLimit = project.radiusM >= NO_LIMIT_RADIUS;
+  const [radius, setRadius] = useState(noLimit ? "" : String(project.radiusM));
+
+  const save = (patch: Record<string, unknown>) =>
+    updateProject.mutate({ id: project.id, ...patch });
 
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
       <Card>
         <p className="mb-4 text-sm font-semibold text-navy">Geofence Settings</p>
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-navy">Enable Geofence</p>
-              <p className="text-xs text-muted-foreground">Restrict check-ins to the project radius</p>
-            </div>
-            <Switch checked={geofence} onCheckedChange={setGeofence} />
-          </div>
           <div>
             <Label className="text-xs">Allowed Radius (meters)</Label>
-            <Input value={radius} onChange={(e) => setRadius(e.target.value)} className="mt-1" />
+            <div className="mt-1 flex items-center gap-2">
+              <Input
+                value={radius}
+                placeholder={noLimit ? "No limit" : ""}
+                onChange={(e) => setRadius(e.target.value)}
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={updateProject.isPending}
+                onClick={() => {
+                  const n = parseInt(radius);
+                  if (!Number.isFinite(n) || n < 0) {
+                    toast.error("Enter a radius of 0 or more");
+                    return;
+                  }
+                  save({ radiusM: n });
+                }}
+              >
+                Save
+              </Button>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Employees must be within this distance to check in. Enter 0 for no limit.
+            </p>
           </div>
+
           <div>
             <Label className="text-xs">Project Location</Label>
-            <Input defaultValue={project.location} className="mt-1" />
+            <ProjectLocationField project={project} onSave={save} />
+          </div>
+
+          <div>
+            <Label className="text-xs">Coordinates</Label>
+            <p className="mt-1 font-mono text-xs text-muted-foreground">
+              {project.coords.lat.toFixed(4)}, {project.coords.lng.toFixed(4)}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Move these with the location picker in Edit Project.
+            </p>
           </div>
         </div>
       </Card>
+
       <Card>
         <p className="mb-4 text-sm font-semibold text-navy">Attendance Requirements</p>
         <div className="space-y-3">
-          <ToggleRow label="Require Photo" desc="Capture photo at check-in/out" checked={photo} onChange={setPhoto} icon={Camera} />
-          <ToggleRow label="Require Location" desc="GPS location required" checked={location} onChange={setLocation} icon={Crosshair} />
-          <ToggleRow label="Prevent Gallery Upload" desc="Block photo uploads from gallery" checked={gallery} onChange={setGallery} icon={ShieldCheck} />
+          {[
+            { key: "REQUIRE_PHOTO", label: "Require Photo", desc: "Capture photo at check-in/out" },
+            { key: "REQUIRE_LOCATION", label: "Require Location", desc: "GPS location required" },
+            { key: "GEOFENCE_ENABLED", label: "Enable Geofence", desc: "Restrict check-ins to the project radius" },
+          ].map((r) => (
+            <ProjectSettingToggle key={r.key} settingKey={r.key} label={r.label} desc={r.desc} />
+          ))}
         </div>
+        <p className="mt-4 text-xs text-muted-foreground">
+          These are company-wide settings and apply to every project.
+        </p>
       </Card>
     </div>
   );
 }
 
-function ToggleRow({ label, desc, checked, onChange, icon: Icon }: { label: string; desc: string; checked: boolean; onChange: (v: boolean) => void; icon: React.ElementType }) {
+function ProjectLocationField({
+  project,
+  onSave,
+}: {
+  project: Project;
+  onSave: (patch: Record<string, unknown>) => void;
+}) {
+  const [value, setValue] = useState(project.location ?? "");
+
+  return (
+    <div className="flex items-center gap-2">
+      <Input value={value} onChange={(e) => setValue(e.target.value)} />
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={value === (project.location ?? "")}
+        onClick={() => onSave({ location: value })}
+      >
+        Save
+      </Button>
+    </div>
+  );
+}
+
+/** Company-level attendance setting, wired to the same store Settings uses. */
+function ProjectSettingToggle({
+  settingKey,
+  label,
+  desc,
+}: {
+  settingKey: string;
+  label: string;
+  desc: string;
+}) {
+  const { data, isLoading } = useSettings();
+  const updateSettings = useUpdateSettings();
+  const current = (data as any)?.settings?.[settingKey] ?? "false";
+  const on = current === "true";
+
+  if (isLoading) {
+    return <Skeleton className="h-[60px] rounded-lg" />;
+  }
+
   return (
     <div className="flex items-center justify-between rounded-lg border border-border p-3">
       <div className="flex items-start gap-3">
-        <span className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary"><Icon size={14} /></span>
+        <span className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary">
+          <ShieldCheck size={14} />
+        </span>
         <div>
           <p className="text-sm font-medium text-navy">{label}</p>
           <p className="text-xs text-muted-foreground">{desc}</p>
         </div>
       </div>
-      <Switch checked={checked} onCheckedChange={onChange} />
+      <Switch
+        checked={on}
+        disabled={updateSettings.isPending}
+        onCheckedChange={(v) => updateSettings.mutate({ [settingKey]: String(v) })}
+      />
     </div>
   );
 }
+
+
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -391,41 +546,89 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-function CreateProjectDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+/**
+ * One dialog for create and edit. The field set and validation are identical,
+ * and keeping them in a single component is what stops the two drifting apart.
+ *
+ * The caller passes a `key` derived from the project id so the component
+ * remounts per project and can seed its state straight from props.
+ */
+function ProjectFormDialog({
+  open,
+  onOpenChange,
+  project,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  /** Omitted for create. */
+  project?: Project;
+}) {
   const createProject = useCreateProject();
-  const [name, setName] = useState("");
-  const [code, setCode] = useState("");
-  const [client, setClient] = useState("");
-  const [location, setLocation] = useState("");
-  const [lat, setLat] = useState("");
-  const [lng, setLng] = useState("");
-  const [radius, setRadius] = useState(200);
-  const [noLimit, setNoLimit] = useState(false);
-  const [description, setDescription] = useState("");
-  const [status, setStatus] = useState("active");
+  const updateProject = useUpdateProject();
+  const isEdit = !!project;
+  const pending = createProject.isPending || updateProject.isPending;
+
+  // "No limit" is persisted as a sentinel radius, so the toggle is derived from
+  // the stored radius when the form opens.
+  const [name, setName] = useState(project?.name ?? "");
+  const [code, setCode] = useState(project?.code ?? "");
+  const [client, setClient] = useState(project?.client ?? "");
+  const [location, setLocation] = useState(project?.location ?? "");
+  const [lat, setLat] = useState(project?.coords?.lat ? String(project.coords.lat) : "");
+  const [lng, setLng] = useState(project?.coords?.lng ? String(project.coords.lng) : "");
+  const [radius, setRadius] = useState(
+    project?.radiusM && project.radiusM < NO_LIMIT_RADIUS ? project.radiusM : 200,
+  );
+  const [noLimit, setNoLimit] = useState(!!project && project.radiusM >= NO_LIMIT_RADIUS);
+  const [description, setDescription] = useState(project?.description ?? "");
+  const [status, setStatus] = useState(project?.status ?? "active");
 
   function submit() {
-    if (!name || !code) return;
-    createProject.mutate({
-      name, code, client, location,
-      latitude: lat || undefined,
-      longitude: lng || undefined,
-      geofenceRadius: noLimit ? "0" : String(radius),
-      description,
-      status,
-      geofence: !noLimit,
-    }, {
-      onSuccess: () => {
-        onOpenChange(false);
-        setName(""); setCode(""); setClient(""); setLocation(""); setLat(""); setLng(""); setRadius(200); setNoLimit(false); setDescription("");
-      },
-    });
+    if (!name.trim() || !code.trim()) return;
+    const onSuccess = () => onOpenChange(false);
+
+    if (project) {
+      // PATCH takes the raw column names.
+      updateProject.mutate(
+        {
+          id: project.id,
+          name: name.trim(),
+          code: code.trim(),
+          client,
+          description,
+          status,
+          location,
+          lat,
+          lng,
+          radiusM: noLimit ? 0 : radius,
+        },
+        { onSuccess },
+      );
+    } else {
+      createProject.mutate(
+        {
+          name: name.trim(),
+          code: code.trim(),
+          client,
+          location,
+          latitude: lat || undefined,
+          longitude: lng || undefined,
+          geofenceRadius: noLimit ? "0" : String(radius),
+          description,
+          status,
+          geofence: !noLimit,
+        },
+        { onSuccess },
+      );
+    }
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="scroll-thin max-h-[90vh] overflow-y-auto sm:max-w-2xl">
-        <DialogHeader><DialogTitle>Create New Project</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle>{isEdit ? "Edit Project" : "Create New Project"}</DialogTitle>
+        </DialogHeader>
         <div className="space-y-4 py-2">
           <div>
             <Label>Project Name *</Label>
@@ -488,8 +691,10 @@ function CreateProjectDialog({ open, onOpenChange }: { open: boolean; onOpenChan
         </div>
         <DialogFooter>
           <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-          <Button onClick={submit} disabled={createProject.isPending || !name || !code}>
-            {createProject.isPending ? "Creating..." : "Create Project"}
+          <Button onClick={submit} disabled={pending || !name.trim() || !code.trim()}>
+            {pending
+              ? isEdit ? "Saving…" : "Creating…"
+              : isEdit ? "Save Changes" : "Create Project"}
           </Button>
         </DialogFooter>
       </DialogContent>
