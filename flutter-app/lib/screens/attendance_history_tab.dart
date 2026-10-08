@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../core/constants.dart';
 import '../providers/attendance_provider.dart';
+import 'attendance_detail_screen.dart';
+import '../models/attendance.dart' as detail_models;
 
 class AttendanceHistoryTab extends StatefulWidget {
   const AttendanceHistoryTab({super.key});
@@ -54,6 +56,31 @@ class _AttendanceHistoryTabState extends State<AttendanceHistoryTab> {
                 final item = att.history[i];
                 return Card(
                   child: ListTile(
+                    // Tapping a record opens the full detail, including the
+                    // check-in/out selfies — the list was previously inert.
+                    onTap: () => Navigator.push(
+                      ctx,
+                      MaterialPageRoute(
+                        builder: (_) => AttendanceDetailScreen(
+                          // The provider produces the lean model from
+                          // models.dart while the detail screen reads the
+                          // richer one; bridge the two here rather than
+                          // duplicating the class a third time.
+                          historyItem: detail_models.AttendanceHistoryItem(
+                            id: item.id,
+                            date: item.date,
+                            project: item.project,
+                            checkIn: item.checkIn,
+                            checkOut: item.checkOut,
+                            workingMinutes: item.workingMinutes,
+                            sessionStatus: item.sessionStatus,
+                            attendanceStatus: item.attendanceStatus,
+                            verificationStatus: item.verificationStatus,
+                            lateMinutes: item.lateMinutes,
+                          ),
+                        ),
+                      ),
+                    ),
                     leading: CircleAvatar(
                       backgroundColor: item.sessionStatus == 'COMPLETED' ? AppColors.successSoft : AppColors.warningSoft,
                       child: Icon(item.sessionStatus == 'COMPLETED' ? Icons.check_circle : Icons.access_time,
