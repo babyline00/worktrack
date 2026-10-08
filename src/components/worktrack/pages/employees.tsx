@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Plus,
   MoreVertical,
@@ -156,6 +157,7 @@ export function EmployeesPage() {
 }
 
 function EmployeeProfile({ employee, onBack }: { employee: any; onBack: () => void }) {
+  const [editOpen, setEditOpen] = useState(false);
   const monthlyTrend = Array.from({ length: 30 }, (_, i) => ({
     label: `D${i + 1}`,
     hours: 6 + Math.round(Math.sin(i / 4) * 2 + (i % 3)),
@@ -188,7 +190,7 @@ function EmployeeProfile({ employee, onBack }: { employee: any; onBack: () => vo
               </div>
             </div>
           </div>
-          <Button variant="outline" size="sm"><Pencil size={14} className="mr-2" /> Edit Employee</Button>
+          <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}><Pencil size={14} className="mr-2" /> Edit Employee</Button>
         </div>
       </Card>
 
@@ -277,7 +279,154 @@ function EmployeeProfile({ employee, onBack }: { employee: any; onBack: () => vo
           </Card>
         </TabsContent>
       </Tabs>
+
+      <EditEmployeeDialog employee={employee} open={editOpen} onOpenChange={setEditOpen} />
     </div>
+  );
+}
+
+// ============================================================
+// EditEmployeeDialog — edit employee fields + reset password + reassign projects
+// ============================================================
+function EditEmployeeDialog({ employee, open, onOpenChange }: { employee: any; open: boolean; onOpenChange: (v: boolean) => void }) {
+  const queryClient = useQueryClient();
+  const { data: projData } = useProjects();
+  const projects = projData?.projects ?? [];
+
+  const [first, setFirst] = useState(employee.firstName ?? "");
+  const [last, setLast] = useState(employee.lastName ?? "");
+  const [email, setEmail] = useState(employee.email ?? "");
+  const [phone, setPhone] = useState(employee.phone ?? "");
+  const [designation, setDesignation] = useState(employee.designation ?? "");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [assigned, setAssigned] = useState<string[]>(employee.projectIds ?? []);
+  const [saving, setSaving] = useState(false);
+
+  // Reset form when employee changes or dialog opens
+  useEffect(() => {
+    if (open) {
+      setFirst(employee.firstName ?? "");
+      setLast(employee.lastName ?? "");
+      setEmail(employee.email ?? "");
+      setPhone(employee.phone ?? "");
+      setDesignation(employee.designation ?? "");
+      setPassword("");
+      setAssigned(employee.projectIds ?? []);
+    }
+  }, [employee, open]);
+
+  function toggleProject(id: string) {
+    setAssigned((prev) => prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]);
+  }
+
+  async function submit() {
+    if (!first) {
+      toast.error("First name is required");
+      return;
+    }
+    if (password && password.length < 6) {
+      toast.error("Password must be at least 6 characters");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/employees/${employee.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          firstName: first,
+          lastName: last,
+          email,
+          phone,
+          designation,
+          password: password || undefined,
+          projectIds: assigned,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || err.message || "Failed to update");
+      }
+
+      const data = await res.json();
+      queryClient.invalidateQueries({ queryKey: ["employees"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      toast.success("Employee updated successfully", {
+        description: password ? "Password reset — employee can log in with new password" : undefined,
+      });
+      onOpenChange(false);
+    } catch (e: any) {
+      toast.error(e.message || "Failed to update employee");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="scroll-thin max-h-[90vh] overflow-y-auto sm:max-w-lg">
+        <DialogHeader><DialogTitle>Edit Employee</DialogTitle></DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="grid grid-cols-2 gap-3">
+            <div><Label>First Name *</Label><Input value={first} onChange={(e) => setFirst(e.target.value)} className="mt-1" /></div>
+            <div><Label>Last Name</Label><Input value={last} onChange={(e) => setLast(e.target.value)} className="mt-1" /></div>
+          </div>
+          <div><Label>Email</Label><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="mt-1" /></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><Label>Phone</Label><Input value={phone} onChange={(e) => setPhone(e.target.value)} className="mt-1" /></div>
+            <div><Label>Designation</Label><Input value={designation} onChange={(e) => setDesignation(e.target.value)} className="mt-1" /></div>
+          </div>
+
+          {/* Password reset */}
+          <div>
+            <Label>Reset Password {employee.email ? `(leave empty to keep current)` : `*`}</Label>
+            <div className="relative mt-1">
+              <Input
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder={employee.email ? "Leave empty to keep current password" : "Set a password"}
+                className="pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-navy"
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+            {password && <p className="mt-1 text-xs text-warning">Password will be reset for this employee.</p>}
+          </div>
+
+          {/* Project assignments */}
+          <div>
+            <Label>Assigned Projects</Label>
+            <div className="mt-2 space-y-2">
+              {projects.length === 0 && <p className="text-xs text-muted-foreground">No projects available.</p>}
+              {projects.map((p) => (
+                <label key={p.id} className="flex cursor-pointer items-center gap-3 rounded-lg border border-border p-2.5 transition hover:bg-muted">
+                  <Checkbox checked={assigned.includes(p.id)} onCheckedChange={() => toggleProject(p.id)} />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-navy">{p.name}</p>
+                    <p className="text-xs text-muted-foreground">{p.code}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+          <Button onClick={submit} disabled={saving || !first}>
+            {saving ? "Saving..." : "Save Changes"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
