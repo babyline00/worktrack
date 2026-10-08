@@ -10,6 +10,8 @@ import {
   Crosshair,
   Maximize2,
   X,
+  Navigation,
+  User as UserIcon,
 } from "lucide-react";
 import { useEmployees, useDashboard } from "@/lib/hooks";
 import { useApp } from "@/lib/store";
@@ -299,9 +301,24 @@ export function LiveAttendancePage() {
                   </div>
                 </div>
 
-                <Button className="w-full" variant="outline" onClick={() => toast.info("Opening live map…", { description: `${drawerEmp.firstName}'s live location` })}>
-                  <Crosshair size={14} className="mr-2" /> View Live Location
-                </Button>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setDrawerEmployee(null);
+                      useApp.setState({ selectedEmployeeId: drawerEmp.id, page: "employees" });
+                    }}
+                  >
+                    <UserIcon size={14} className="mr-2" /> Employee
+                  </Button>
+                  <Button
+                    variant={showLiveMap ? "default" : "outline"}
+                    onClick={() => setShowLiveMap(!showLiveMap)}
+                  >
+                    {showLiveMap ? <X size={14} className="mr-2" /> : <Navigation size={14} className="mr-2" />}
+                    {showLiveMap ? "Hide Map" : "Live Map"}
+                  </Button>
+                </div>
               </div>
             </>
           )}

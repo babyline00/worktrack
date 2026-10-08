@@ -2,11 +2,17 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { Cache } from "@/lib/cache";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const companyId = (session.user as any).companyId;
+
+  // Try cache first (15 second TTL for dashboard)
+  const cacheKey = `dashboard:${companyId}`;
+  const cached = await Cache.get(cacheKey);
+  if (cached) return NextResponse.json(cached);
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -153,7 +159,7 @@ export async function GET() {
     alerts.push({ id: "al-missing-photos", severity: "warning", title: `${missingPhotos.length} employees have missing attendance photos`, description: "Photo verification required at check-in" });
   }
 
-  return NextResponse.json({
+  const response = {
     kpis: { totalEmployees: activeEmployees, present, workingNow, absent, late, leave: onLeave, presentPct },
     donut,
     trend,
@@ -161,5 +167,10 @@ export async function GET() {
     liveAttendance,
     alerts,
     notifications,
-  });
+  };
+
+  // Cache for 15 seconds
+  await Cache.set(cacheKey, response, 15_000);
+
+  return NextResponse.json(response);
 }

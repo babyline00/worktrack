@@ -255,13 +255,18 @@ export function useCreateEmployee() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
-      if (!res.ok) throw new Error("Failed to add employee");
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || err.message || "Failed to add employee");
+      }
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["employees"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
-      toast.success("Employee added successfully");
+      toast.success("Employee added successfully", {
+        description: data.message || "Login access enabled",
+      });
     },
     onError: (e: any) => toast.error(e.message ?? "Unable to add employee"),
   });

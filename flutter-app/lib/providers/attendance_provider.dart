@@ -313,6 +313,9 @@ class AttendanceProvider extends ChangeNotifier {
     return false;
   }
 
+  String? _geofenceWarning;
+  String? get geofenceWarning => _geofenceWarning;
+
   Future<bool> checkOut({
     required String attendanceId,
     required String photoPath,
@@ -322,6 +325,7 @@ class AttendanceProvider extends ChangeNotifier {
   }) async {
     _isCheckingOut = true;
     _error = null;
+    _geofenceWarning = null;
     notifyListeners();
 
     // The server rejects an empty photo with a generic validation error, and
@@ -356,6 +360,8 @@ class AttendanceProvider extends ChangeNotifier {
       );
 
       if (response.data['success'] == true) {
+        // Check for geofence warning
+        _geofenceWarning = response.data['data']?['geofenceWarning'];
         await loadTodayAttendance();
         await loadDashboard();
         _isCheckingOut = false;

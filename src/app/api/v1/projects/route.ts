@@ -77,7 +77,7 @@ export async function POST(req: Request) {
         location: body.location,
         lat: body.latitude ? parseFloat(body.latitude) : null,
         lng: body.longitude ? parseFloat(body.longitude) : null,
-        radiusM: parseInt(body.geofenceRadius ?? body.radiusM ?? "200"),
+        radiusM: parseInt(body.geofenceRadius ?? body.radiusM ?? "200") === 0 ? 9999999 : parseInt(body.geofenceRadius ?? body.radiusM ?? "200"),
         timezone: body.timezone,
         startDate: body.startDate ? new Date(body.startDate) : null,
         endDate: body.endDate ? new Date(body.endDate) : null,

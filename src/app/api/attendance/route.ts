@@ -9,43 +9,73 @@ export async function GET(req: Request) {
   const companyId = (session.user as any).companyId;
   const url = new URL(req.url);
   const dateStr = url.searchParams.get("date");
+  const employeeId = url.searchParams.get("employeeId");
 
-  const today = dateStr ? new Date(dateStr) : new Date();
-  today.setHours(0, 0, 0, 0);
+  // If employeeId is provided, fetch ALL attendance records for that employee (no date filter)
+  // Otherwise, fetch today's records for all employees
+  const where: any = { employee: { companyId, status: "ACTIVE" } };
+
+  if (employeeId) {
+    where.employeeId = employeeId;
+    // No date filter — get all history
+  } else {
+    const today = dateStr ? new Date(dateStr) : new Date();
+    today.setHours(0, 0, 0, 0);
+    where.attendanceDate = today;
+  }
 
   const records = await db.attendance.findMany({
-    where: { attendanceDate: today, employee: { companyId } },
-    include: { employee: true, project: true },
-    orderBy: { checkIn: "asc" },
+    where,
+    include: {
+      employee: true,
+      project: true,
+      photos: true,
+    },
+    orderBy: { attendanceDate: "desc" },
   });
 
   const rows = records.map((r) => {
-    // Map DB status to UI status
     let uiStatus: string = r.attendanceStatus.toLowerCase();
     if (uiStatus === "present") {
       uiStatus = r.checkOut ? "checked_out" : "working";
     } else if (uiStatus === "half_day") {
       uiStatus = "break";
+    } else if (uiStatus === "late") {
+      uiStatus = r.checkOut ? "checked_out" : "late";
+    } else if (uiStatus === "absent") {
+      uiStatus = "absent";
+    } else if (uiStatus === "on_leave") {
+      uiStatus = "leave";
     }
+
+    const checkInPhoto = r.photos.find((p) => p.type === "CHECK_IN");
+    const checkOutPhoto = r.photos.find((p) => p.type === "CHECK_OUT");
+
     return {
       id: r.id,
-      date: today.toLocaleDateString("en-US", { day: "2-digit", month: "short" }),
+      date: r.attendanceDate.toLocaleDateString("en-US", { day: "2-digit", month: "short" }),
       employeeId: r.employee.empId,
       employeeName: `${r.employee.firstName} ${r.employee.lastName}`,
       employeeInitials: (r.employee.firstName[0] ?? "") + (r.employee.lastName[0] ?? ""),
       avatarColor: r.employee.avatarColor,
+      projectId: r.projectId,
       project: r.project?.name ?? "—",
       checkIn: r.checkIn?.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }) ?? "—",
       checkOut: r.checkOut?.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }),
       hoursMins: formatMins(r.workingMins),
+      workingMinutes: r.workingMins,
+      lateMinutes: r.lateMins,
       status: uiStatus,
       verification: r.verificationStatus.toLowerCase(),
       location: r.checkInLocation ?? "—",
       coords: { lat: r.checkInLat ?? 0, lng: r.checkInLng ?? 0 },
       accuracyM: r.checkInAccuracy ?? 0,
-      photoCheckIn: !!r.checkInPhoto,
-      photoCheckOut: !!r.checkOutPhoto,
+      photoCheckIn: !!checkInPhoto,
+      photoCheckOut: !!checkOutPhoto,
+      checkInPhotoUrl: checkInPhoto?.photoUrl ?? null,
+      checkOutPhotoUrl: checkOutPhoto?.photoUrl ?? null,
       insideGeofence: r.insideGeofence,
+      distanceFromProject: r.distanceFromProject,
     };
   });
 
