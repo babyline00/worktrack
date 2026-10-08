@@ -31,10 +31,9 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 export function AttendancePage() {
-  const { attendanceDetailId, setAttendanceDetail } = useApp();
+  const { attendanceDetailId, setAttendanceDetail, setPage } = useApp();
   const { data, isLoading } = useAttendance();
   const { data: empData } = useEmployees();
-  const { setPage } = useApp();
   const [query, setQuery] = useState("");
   const [project, setProject] = useState("all");
   const [status, setStatus] = useState("all");
@@ -175,12 +174,13 @@ export function AttendancePage() {
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      // Find employee by empId and navigate to their profile
-                      const emp = empData?.employees.find((e) => e.empId === detail.employeeId);
+                      const emp = empData?.employees?.find((e) => e.empId === detail.employeeId);
                       if (emp) {
                         setAttendanceDetail(null);
                         setPage("employees");
                         useApp.setState({ selectedEmployeeId: emp.id });
+                      } else {
+                        toast.info("Employee not found in current list");
                       }
                     }}
                   >
