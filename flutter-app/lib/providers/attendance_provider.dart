@@ -441,6 +441,18 @@ class AttendanceProvider extends ChangeNotifier {
         _serverInsideGeofence = data['insideGeofence'] as bool?;
         _serverDistanceMeters =
             (data['distanceFromProject'] as num?)?.toDouble();
+
+        // The server closes the session itself once the employee has been
+        // outside the radius for the full grace period. Reflect that here so
+        // the UI stops counting and the employee is told why.
+        if (data['autoCheckedOut'] == true) {
+          _autoCheckedOutByServer = true;
+          _geofenceWatch.reset();
+          _insideGeofence = false;
+          _autoCheckOutDue = false;
+          await loadTodayAttendance();
+          await loadDashboard();
+        }
       }
       _evaluateGeofence();
       notifyListeners();
@@ -480,6 +492,19 @@ class AttendanceProvider extends ChangeNotifier {
   bool get shouldAutoCheckOut => _autoCheckOutDue;
 
   bool _autoCheckOutDue = false;
+
+  /// Set when the server closed the session because the employee stayed
+  /// outside the project radius. Surfaced once, then cleared.
+  bool _autoCheckedOutByServer = false;
+
+  /// Whether the server auto checked out the current session.
+  bool get wasAutoCheckedOut => _autoCheckedOutByServer;
+
+  /// Clears the auto check-out notice after the UI has shown it.
+  void acknowledgeAutoCheckOut() {
+    _autoCheckedOutByServer = false;
+    notifyListeners();
+  }
 
   /// Sets the site to measure live positions against, taken from the attendance
   /// record the session was started on.

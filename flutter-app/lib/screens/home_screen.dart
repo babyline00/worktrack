@@ -21,6 +21,15 @@ class _HomeScreenState extends State<HomeScreen> {
   /// keeps every tab alive, so its `initState` only ever runs once.
   final _leaveKey = GlobalKey<LeaveTabState>();
 
+  @override
+  void initState() {
+    super.initState();
+    // The dashboard is the screen's own data, so it loads with the screen.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) context.read<AttendanceProvider>().loadDashboard();
+    });
+  }
+
   /// Reloads the data behind a tab as it becomes visible.
   ///
   /// `IndexedStack` builds every tab up front and keeps it alive, so each tab's
@@ -28,6 +37,9 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Attendance and Leave kept showing whatever was loaded at launch.
   void _refreshTab(int index) {
     switch (index) {
+      case 0:
+        // Pick up check-ins/out made since the screen was built.
+        context.read<AttendanceProvider>().loadDashboard();
       case 1:
         // Page 1 replaces rather than appends, so this also clears the
         // paginated state from any earlier scroll.

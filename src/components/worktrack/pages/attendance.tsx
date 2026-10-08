@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { Download, Search, MapPin, X, Calendar as CalIcon, Eye, Pencil, User as UserIcon } from "lucide-react";
-import { useAttendance, useEmployees } from "@/lib/hooks";
+import { useAttendance, useEmployeeByEmpId, useEmployees } from "@/lib/hooks";
+import { AdjustAttendanceDialog } from "@/components/worktrack/adjust-attendance-dialog";
 import { useApp } from "@/lib/store";
 import {
   Avatar,
@@ -34,7 +35,16 @@ export function AttendancePage() {
   const { attendanceDetailId, setAttendanceDetail, setPage } = useApp();
   const { data, isLoading } = useAttendance();
   const { data: empData } = useEmployees();
+  const detail = data?.attendance?.find((r) => r.id === attendanceDetailId);
+  // Resolve through the API rather than the loaded employee list, which may
+  // not include this employee.
+  const { data: looked, isFetching: looking } = useEmployeeByEmpId(
+    detail?.employeeId,
+  );
   const [query, setQuery] = useState("");
+  const [adjustId, setAdjustId] = useState<string | null>(null);
+  const adjusting =
+    data?.attendance?.find((r) => r.id === adjustId) ?? null;
   const [project, setProject] = useState("all");
   const [status, setStatus] = useState("all");
 
@@ -49,7 +59,22 @@ export function AttendancePage() {
     });
   }, [data, query, project, status]);
 
-  const detail = rows.find((r) => r.id === attendanceDetailId);
+  /** Opens the employee's full record, fetched on demand if not already loaded. */
+  const openEmployee = async (empId: string | undefined) => {
+    if (!empId) return;
+    // Prefer an exact hit from the already-loaded list to avoid a round trip.
+    const local = empData?.employees?.find((e) => String(e.empId) === empId);
+    const found = local ?? looked?.employees?.[0];
+    if (!found) {
+      toast.error("Employee not found", {
+        description: `No employee record matches ID ${empId}.`,
+      });
+      return;
+    }
+    setAttendanceDetail(null);
+    setPage("employees");
+    useApp.setState({ selectedEmployeeId: found.id });
+  };
 
   return (
     <div className="space-y-6 fade-in">
@@ -144,7 +169,8 @@ export function AttendancePage() {
                         <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setAttendanceDetail(r.id); }}>
                           <Eye size={12} className="mr-1" /> View
                         </Button>
-                        <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setAdjustId(r.id); }}>
+                        <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setAdjustId(r.id); }}
+                          title="Manually correct the captured times">
                           <Pencil size={12} className="mr-1" /> Adjust
                         </Button>
                       </div>
@@ -173,18 +199,12 @@ export function AttendancePage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => {
-                      const emp = empData?.employees?.find((e) => e.empId === detail.employeeId);
-                      if (emp) {
-                        setAttendanceDetail(null);
-                        setPage("employees");
-                        useApp.setState({ selectedEmployeeId: emp.id });
-                      } else {
-                        toast.info("Employee not found in current list");
-                      }
-                    }}
+                    disabled={looking}
+                    onClick={() => openEmployee(detail.employeeId)}
+                    title={`Open the full record for ${detail.employeeName}`}
                   >
-                    <UserIcon size={12} className="mr-1" /> Employee
+                    <UserIcon size={12} className="mr-1" />
+                    {looking ? "Loading…" : "View Employee Details"}
                   </Button>
                 </div>
 
@@ -229,6 +249,18 @@ export function AttendancePage() {
           )}
         </SheetContent>
       </Sheet>
+
+      <AdjustAttendanceDialog
+        key={adjustId ?? "none"}
+        attendanceId={adjustId}
+        employeeName={adjusting?.employeeName}
+        employeeId={adjusting?.employeeId}
+        checkIn={adjusting?.checkInIso}
+        checkOut={adjusting?.checkOutIso}
+        workingMinutes={adjusting?.workingMinutes}
+        open={!!adjustId}
+        onOpenChange={(v) => { if (!v) setAdjustId(null); }}
+      />
     </div>
   );
 }

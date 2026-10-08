@@ -62,8 +62,12 @@ export async function GET(req: Request) {
       project: r.project?.name ?? "—",
       checkIn: r.checkIn?.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }) ?? "—",
       checkOut: r.checkOut?.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }),
-      hoursMins: formatMins(r.workingMins),
+      // Exact values, so the admin adjust dialog can prefill real timestamps
+      // instead of trying to parse the formatted strings above.
+      checkInIso: r.checkIn?.toISOString() ?? null,
+      checkOutIso: r.checkOut?.toISOString() ?? null,
       workingMinutes: r.workingMins,
+      hoursMins: formatMins(r.workingMins),
       lateMinutes: r.lateMins,
       status: uiStatus,
       verification: r.verificationStatus.toLowerCase(),

@@ -114,6 +114,25 @@ class _DashboardTabState extends State<DashboardTab> {
     final isCheckedOut = today != null && today.sessionStatus == 'COMPLETED';
     final isNotStarted = today == null || today.sessionStatus == 'NOT_STARTED';
 
+    // The server closes a session that stays outside the project radius. Tell
+    // the employee rather than silently resetting the timer.
+    if (att.wasAutoCheckedOut) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!context.mounted) return;
+        att.acknowledgeAutoCheckOut();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Your session was closed automatically: you stayed outside the '
+              'project area for too long. It has been flagged for review.',
+            ),
+            backgroundColor: AppColors.warning,
+            duration: Duration(seconds: 7),
+          ),
+        );
+      });
+    }
+
     // Minutes already banked from sessions completed earlier today. Added to the
     // live session so a second check-in does not reset the day's clock.
     final bankedSeconds = (today?.totalWorkingMinutes ?? 0) * 60;

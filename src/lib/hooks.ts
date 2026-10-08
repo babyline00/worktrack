@@ -64,6 +64,10 @@ export interface AttendanceRow {
   project: string;
   checkIn: string;
   checkOut?: string;
+  /** ISO timestamps — the exact values, unlike the display strings above. */
+  checkInIso?: string | null;
+  checkOutIso?: string | null;
+  workingMinutes?: number;
   hoursMins: string;
   status: string;
   verification: string;
@@ -137,6 +141,34 @@ export function useEmployees() {
       const res = await fetch("/api/employees");
       if (!res.ok) throw new Error("Failed to load employees");
       return res.json();
+    },
+  });
+}
+
+/**
+ * Resolves one employee by their human-facing employee ID.
+ *
+ * The attendance table shows `empId` (e.g. 987654321) while the employees list
+ * is keyed by internal id, and that list may be paginated — so looking the
+ * employee up in already-loaded data fails for anyone not on page 1.
+ */
+export function useEmployeeByEmpId(empId: string | undefined) {
+  return useQuery<{ employees: Employee[] }>({
+    queryKey: ["employee-by-empid", empId],
+    enabled: !!empId,
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/employees?search=${encodeURIComponent(empId ?? "")}`,
+      );
+      if (!res.ok) throw new Error("Failed to load employee");
+      const body = await res.json();
+      return {
+        // Match exactly — a partial `contains` search can return several
+        // employees whose ids share this prefix.
+        employees: (body?.employees ?? []).filter(
+          (e: Employee) => String(e.empId) === String(empId),
+        ),
+      };
     },
   });
 }
@@ -295,6 +327,50 @@ export function useDeleteEmployee() {
       });
     },
     onError: (e: any) => toast.error(e.message ?? "Failed to delete employee"),
+  });
+}
+
+/**
+ * Manually corrects an attendance record.
+ *
+ * The record is flagged FLAGGED server-side and the change is audit logged, so
+ * adjustments are always attributable.
+ */
+export function useAdjustAttendance() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      checkInAt,
+      checkOutAt,
+      workingMinutes,
+      reason,
+    }: {
+      id: string;
+      checkInAt?: string;
+      checkOutAt?: string;
+      workingMinutes?: number;
+      reason: string;
+    }) => {
+      const res = await fetch(`/api/attendance/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ checkInAt, checkOutAt, workingMinutes, reason }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error ?? "Failed to adjust attendance");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["attendance"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      toast.success("Attendance adjusted", {
+        description: "The record was flagged and the change was audit logged.",
+      });
+    },
+    onError: (e: Error) => toast.error("Adjustment failed", { description: e.message }),
   });
 }
 
