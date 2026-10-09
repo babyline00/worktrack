@@ -42,7 +42,7 @@ async function seedStep1() {
   const company = await db.company.upsert({
     where: { id: "company-main" },
     update: { code: "WT001", status: "ACTIVE" },
-    create: { id: "company-main", name: "WorkTrack LLC", code: "WT001", industry: "Construction & Services", email: "admin@worktrack.io", phone: "+92 300 1234567", address: "Lahore, Pakistan", timezone: "Asia/Karachi", currency: "PKR", status: "ACTIVE" },
+    create: { id: "company-main", name: "NAS International", code: "WT001", industry: "Construction & Services", email: "admin@worktrack.io", phone: "+92 300 1234567", address: "Lahore, Pakistan", timezone: "Asia/Karachi", currency: "PKR", status: "ACTIVE" },
   });
 
   const adminPwd = await bcrypt.hash("admin123", 10);
@@ -197,7 +197,7 @@ async function seedStep3() {
 
   // Notifications
   await db.notification.createMany({ data: [
-    { companyId: company.id, type: "ATTENDANCE", title: "Welcome to WorkTrack!", description: "Your dashboard is ready.", timeAgo: "Just now", unread: true },
+    { companyId: company.id, type: "ATTENDANCE", title: "Welcome to NAS International!", description: "Your dashboard is ready.", timeAgo: "Just now", unread: true },
     { companyId: company.id, type: "SYSTEM", title: "Database seeded", description: `${attData.length} attendance records created.`, timeAgo: "Just now", unread: true },
   ] });
 

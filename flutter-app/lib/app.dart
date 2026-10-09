@@ -10,8 +10,8 @@ import 'providers/notification_provider.dart';
 import 'providers/project_provider.dart';
 import 'screens/splash_screen.dart';
 
-class WorkTrackApp extends StatelessWidget {
-  const WorkTrackApp({super.key});
+class NasApp extends StatelessWidget {
+  const NasApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -28,7 +28,7 @@ class WorkTrackApp extends StatelessWidget {
             create: (_) => NotificationProvider()),
       ],
       child: MaterialApp(
-        title: 'WorkTrack',
+        title: 'NAS International',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme,
         // SplashScreen restores the persisted session (ApiClient.init + profile)

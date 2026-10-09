@@ -191,7 +191,7 @@ const _guides = [
       'Tracking continues when you switch screens, and resumes when you come '
           'back to the app.',
       'If the app says location permission is permanently denied, open Settings '
-          'and enable Location for WorkTrack — it cannot re-prompt you itself.',
+          'and enable Location for NAS International — it cannot re-prompt you itself.',
       'A fix with poor accuracy (say ±80 m) may read as outside the radius. '
           'Move to an open area and wait for accuracy to improve.',
     ],

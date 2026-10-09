@@ -205,7 +205,7 @@ const projectId = projectParam && projectParam !== "all" ? projectParam : undefi
         headers: {
           "Content-Type": "text/csv; charset=utf-8",
           // BOM so Excel opens UTF-8 names correctly.
-          "Content-Disposition": `attachment; filename="worktrack-${stamp}.csv"`,
+          "Content-Disposition": `attachment; filename="nas-attendance-${stamp}.csv"`,
         },
       });
     }
@@ -218,7 +218,7 @@ const projectId = projectParam && projectParam !== "all" ? projectParam : undefi
     return new Response(html, {
       headers: {
         "Content-Type": "application/vnd.ms-excel; charset=utf-8",
-        "Content-Disposition": `attachment; filename="worktrack-${stamp}.xls"`,
+        "Content-Disposition": `attachment; filename="nas-attendance-${stamp}.xls"`,
       },
     });
   }

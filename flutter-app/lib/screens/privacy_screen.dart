@@ -45,7 +45,7 @@ class PrivacyScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'WorkTrack records a position only while you have an open '
+                    'NAS International records a position only while you have an open '
                     'shift, so your attendance can be verified against the '
                     'project you are working at. Positions are visible to your '
                     'administrator while the session is open.',
@@ -88,7 +88,7 @@ class PrivacyScreen extends StatelessWidget {
           const SizedBox(height: AppSpacing.lg),
           const Center(
             child: Text(
-              'WorkTrack v1.0.0',
+              'NAS International v1.0.0',
               style: TextStyle(color: AppColors.textMuted, fontSize: 12),
             ),
           ),

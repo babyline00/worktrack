@@ -42,7 +42,7 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 
-  /* WorkTrack semantic palette */
+  /* NAS International semantic palette */
   --color-navy: var(--navy);
   --color-success: var(--success);
   --color-success-soft: var(--success-soft);
@@ -57,7 +57,7 @@
 :root {
   --radius: 0.625rem;
 
-  /* WorkTrack palette (light) */
+  /* NAS International palette (light) */
   --background: #f8fafc;
   --foreground: #0f172a;
   --card: #ffffff;

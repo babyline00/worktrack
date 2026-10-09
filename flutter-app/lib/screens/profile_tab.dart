@@ -41,7 +41,7 @@ class ProfileTab extends StatelessWidget {
           // Info cards
           Card(child: ListTile(leading: const Icon(Icons.badge_outlined, color: AppColors.primary), title: const Text('Employee ID', style: TextStyle(fontSize: 13, color: AppColors.textSecondary)), trailing: Text(user?.employeeId ?? '—', style: const TextStyle(fontWeight: FontWeight.w600)))),
           Card(child: ListTile(leading: const Icon(Icons.email_outlined, color: AppColors.primary), title: const Text('Email', style: TextStyle(fontSize: 13, color: AppColors.textSecondary)), trailing: Text(user?.email ?? '—', style: const TextStyle(fontWeight: FontWeight.w600)))),
-          // Was the literal 'WorkTrack LLC' regardless of who was signed in. The real
+          // Was the literal tenant name regardless of who was signed in. The real
           // name is on the session.
           Card(child: ListTile(leading: const Icon(Icons.business_outlined, color: AppColors.primary), title: const Text('Company', style: TextStyle(fontSize: 13, color: AppColors.textSecondary)), trailing: Text(user?.companyName ?? '—', style: const TextStyle(fontWeight: FontWeight.w600)))),
 
@@ -98,7 +98,7 @@ class ProfileTab extends StatelessWidget {
               MaterialPageRoute<void>(builder: (_) => const HelpScreen()),
             ),
           )),
-          Card(child: ListTile(leading: const Icon(Icons.info_outline, color: AppColors.textSecondary), title: const Text('About'), trailing: const Icon(Icons.chevron_right), onTap: () => showAboutDialog(context: context, applicationName: 'WorkTrack', applicationVersion: '1.0.0'))),
+          Card(child: ListTile(leading: const Icon(Icons.info_outline, color: AppColors.textSecondary), title: const Text('About'), trailing: const Icon(Icons.chevron_right), onTap: () => showAboutDialog(context: context, applicationName: 'NAS International', applicationVersion: '1.0.0'))),
 
           const SizedBox(height: 24),
 
@@ -117,7 +117,7 @@ class ProfileTab extends StatelessWidget {
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger, minimumSize: const Size(double.infinity, 48)),
           ),
           const SizedBox(height: 16),
-          const Center(child: Text('WorkTrack v1.0.0', style: TextStyle(color: AppColors.textMuted, fontSize: 12))),
+          const Center(child: Text('NAS International v1.0.0', style: TextStyle(color: AppColors.textMuted, fontSize: 12))),
         ],
       ),
     );

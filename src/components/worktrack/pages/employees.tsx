@@ -391,7 +391,7 @@ function EmployeeProfile({ employee, onBack }: { employee: any; onBack: () => vo
             <FileText size={40} className="text-muted-foreground/40" />
             <p className="mt-3 text-sm font-medium text-navy">No documents</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              No document storage is configured for WorkTrack, so there is nothing to
+              No document storage is configured for NAS International, so there is nothing to
               upload here yet.
             </p>
           </Card>
@@ -619,7 +619,7 @@ function AddEmployeeDialog({ open, onOpenChange }: { open: boolean; onOpenChange
         <div className="space-y-4 py-2">
           <div className="flex flex-col items-center gap-2">
             {/* Was a dashed circle with an upload icon and no handler. Avatars in
-                WorkTrack are generated from the employee's initials, so there is
+                Avatars are generated from the employee's initials, so there is
                 nothing to upload. */}
             <span className="flex h-20 w-20 items-center justify-center rounded-full bg-muted/60 text-xs text-muted-foreground">
               Initials

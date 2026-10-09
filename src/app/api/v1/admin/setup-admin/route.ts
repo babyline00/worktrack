@@ -15,7 +15,7 @@ export async function POST(req: Request) {
     let body: any = {};
     try { body = await req.json(); } catch { body = {}; }
 
-    const companyName = body.companyName || "WorkTrack LLC";
+    const companyName = body.companyName || "NAS International";
     const companyCode = body.companyCode || "WT001";
     const adminName = body.adminName || "Ahmad Administrator";
     const adminEmail = body.adminEmail || "admin@worktrack.io";

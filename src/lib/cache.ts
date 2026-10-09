@@ -1,4 +1,4 @@
-// Redis caching layer for WorkTrack
+// Redis caching layer for NAS International
 // Uses in-memory cache as fallback when Redis is not available
 // In production: set REDIS_URL env var to enable Redis
 

@@ -1,9 +1,9 @@
-// WorkTrack mobile app — main entry point
+// NAS International mobile app — main entry point
 import 'package:flutter/material.dart';
 
 import 'app.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const WorkTrackApp());
+  runApp(const NasApp());
 }

@@ -79,7 +79,7 @@ const GUIDES = [
     items: [
       {
         q: "Where are the selfies stored?",
-        a: "In the WorkTrack database, served only to signed-in staff of your own organisation. They are never publicly addressable, and the API rejects any request without a valid session.",
+        a: "In the NAS International database, served only to signed-in staff of your own organisation. They are never publicly addressable, and the API rejects any request without a valid session.",
       },
       {
         q: "What do the verification states mean?",
@@ -146,7 +146,7 @@ export function HelpSupportPage() {
     <div className="space-y-6 fade-in">
       <PageHeader
         title="Help & Support"
-        subtitle="Guides for the WorkTrack admin console and mobile app."
+        subtitle="Guides for the NAS International admin console and mobile app."
       />
 
       <Card className="p-4">
@@ -247,7 +247,7 @@ export function HelpSupportPage() {
             Include the employee's ID, the approximate time, and what the app displayed.
           </p>
           <Button variant="outline" size="sm" className="mt-3" asChild>
-            <a href={`mailto:support@worktrack.io?subject=${encodeURIComponent("WorkTrack support request")}`}>
+            <a href={`mailto:support@worktrack.io?subject=${encodeURIComponent("NAS International support request")}`}>
               Contact support
             </a>
           </Button>

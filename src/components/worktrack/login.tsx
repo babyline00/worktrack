@@ -8,20 +8,22 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { BRAND, NasMark } from "./brand";
 
 export function LoginScreen() {
   const router = useRouter();
-  const [email, setEmail] = useState("admin@worktrack.io");
-  const [password, setPassword] = useState("admin123");
+  // Was pre-filled with the seed admin's address, so every visitor landed on a
+  // form already holding a real login.
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
+  async function authenticate(em: string, pw: string) {
     setLoading(true);
     const res = await signIn("credentials", {
-      email,
-      password,
+      email: em,
+      password: pw,
       redirect: false,
     });
     setLoading(false);
@@ -33,9 +35,20 @@ export function LoginScreen() {
     router.refresh();
   }
 
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    await authenticate(email, password);
+  }
+
+  /**
+   * Signs in straight away. This used to only populate the two inputs, so a
+   * button labelled "Quick demo logins" did nothing visible until the visitor
+   * also found and pressed "Sign in".
+   */
   function quickLogin(em: string, pw: string) {
     setEmail(em);
     setPassword(pw);
+    void authenticate(em, pw);
   }
 
   return (
@@ -43,21 +56,12 @@ export function LoginScreen() {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="mb-8 flex flex-col items-center">
-          <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg">
-            <svg viewBox="0 0 24 24" className="h-8 w-8" fill="none">
-              <path
-                d="M4 7h16M4 12h10M4 17h7"
-                stroke="currentColor"
-                strokeWidth="2.4"
-                strokeLinecap="round"
-              />
-              <circle cx="18" cy="17" r="2.5" fill="currentColor" />
-            </svg>
-          </div>
-          <h1 className="mt-3 text-2xl font-bold tracking-tight text-white">
-            WORKTRACK
+          <NasMark className="h-16 w-16 drop-shadow-lg" />
+          <h1 className="mt-4 text-2xl font-bold tracking-tight text-white">
+            {BRAND.name}
           </h1>
-          <p className="text-sm text-white/60">Workforce Management Platform</p>
+          <p className="mt-1 text-sm text-white/60">{BRAND.tagline}</p>
+          <p className="mt-0.5 text-xs text-white/40">{BRAND.descriptor} Platform</p>
         </div>
 
         <div className="rounded-xl bg-card p-6 shadow-2xl">
@@ -134,7 +138,7 @@ export function LoginScreen() {
         </div>
 
         <p className="mt-6 text-center text-xs text-white/40">
-          © 2026 WorkTrack. All rights reserved.
+          © 2026 {BRAND.name}. All rights reserved.
         </p>
       </div>
     </div>

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../core/constants.dart';
 import '../providers/auth_provider.dart';
+import '../widgets/nas_mark.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -40,20 +41,16 @@ class _LoginScreenState extends State<LoginScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   // Logo
-                  Container(
-                    width: 72, height: 72,
-                    decoration: BoxDecoration(
-                      color: AppColors.primary,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Icon(Icons.fingerprint, size: 36, color: Colors.white),
-                  ),
+                  const NasMark(size: 72),
                   const SizedBox(height: 16),
-                  const Text('WORKTRACK', style: TextStyle(
+                  Text(AppText.appName, style: const TextStyle(
                     color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold,
                   )),
-                  const Text('Workforce Management', style: TextStyle(
-                    color: Colors.white60, fontSize: 14,
+                  Text(AppText.appTagline, style: const TextStyle(
+                    color: Colors.white60, fontSize: 13,
+                  )),
+                  Text(AppText.appDescriptor, style: const TextStyle(
+                    color: Colors.white38, fontSize: 12,
                   )),
                   const SizedBox(height: 40),
 
@@ -149,7 +146,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                   const SizedBox(height: 24),
-                  const Text('© 2026 WorkTrack. All rights reserved.', style: TextStyle(
+                  const Text('© 2026 NAS International. All rights reserved.', style: TextStyle(
                     color: Colors.white38, fontSize: 12,
                   )),
                 ],

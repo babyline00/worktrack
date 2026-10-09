@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useEmployees, useLeaveRequests } from "@/lib/hooks";
+import { BRAND, NasMark } from "./brand";
 import { useApp, type PageKey } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { Avatar } from "./ui";
@@ -103,23 +104,13 @@ export function Sidebar() {
       >
         {/* Logo */}
         <div className="flex h-[72px] items-center gap-2.5 px-5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none">
-              <path
-                d="M4 7h16M4 12h10M4 17h7"
-                stroke="currentColor"
-                strokeWidth="2.4"
-                strokeLinecap="round"
-              />
-              <circle cx="18" cy="17" r="2.5" fill="currentColor" />
-            </svg>
-          </div>
-          <div className="leading-tight">
-            <p className="text-[15px] font-bold tracking-tight text-navy">
-              WORKTRACK
+          <NasMark className="h-9 w-9 shrink-0" />
+          <div className="min-w-0 leading-tight">
+            <p className="truncate text-[15px] font-bold tracking-tight text-navy">
+              {BRAND.shortName} INTERNATIONAL
             </p>
-            <p className="text-[11px] text-muted-foreground">
-              Workforce Management
+            <p className="truncate text-[11px] text-muted-foreground">
+              {BRAND.descriptor}
             </p>
           </div>
         </div>

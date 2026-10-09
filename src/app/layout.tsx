@@ -12,27 +12,29 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "WorkTrack — Workforce Management",
+  title: "NAS International — Workforce Management",
   description:
-    "Modern workforce attendance & project monitoring platform. One screen to know who is working, where they are, and how long they have been working.",
+    "Workforce attendance & project monitoring by NAS International. One screen to know who is working, where they are, and how long they have been working.",
   keywords: [
-    "WorkTrack",
+    "NAS International",
     "Workforce Management",
     "Attendance",
     "Live Tracking",
     "Project Monitoring",
   ],
-  authors: [{ name: "WorkTrack" }],
-  icons: { icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg" },
+  authors: [{ name: "NAS International" }],
+  // The favicon is src/app/icon.svg (the NAS mark). This used to point at a
+  // third-party CDN hosting the scaffolding tool's "Z" logo, which meant every
+  // browser tab and bookmark showed another company's mark.
   openGraph: {
-    title: "WorkTrack — Workforce Management",
+    title: "NAS International — Workforce Management",
     description: "Real-time workforce attendance & project monitoring platform",
-    siteName: "WorkTrack",
+    siteName: "NAS International",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "WorkTrack",
+    title: "NAS International",
     description: "Real-time workforce attendance & project monitoring platform",
   },
 };

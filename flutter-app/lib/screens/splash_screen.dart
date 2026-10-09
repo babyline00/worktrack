@@ -1,9 +1,10 @@
-// Splash screen — shows the WorkTrack logo briefly while restoring session.
+// Splash screen — shows the NAS mark briefly while restoring session.
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/constants.dart';
 import '../providers/auth_provider.dart';
+import '../widgets/nas_mark.dart';
 import 'login_screen.dart';
 import 'home_screen.dart';
 
@@ -91,11 +92,7 @@ class _SplashScreenState extends State<SplashScreen>
                             width: 1,
                           ),
                         ),
-                        child: const Icon(
-                          Icons.fingerprint,
-                          color: Colors.white,
-                          size: 52,
-                        ),
+                        child: const NasMark(size: 72),
                       ),
                       const SizedBox(height: AppSpacing.xl),
                       const Text(
@@ -109,12 +106,11 @@ class _SplashScreenState extends State<SplashScreen>
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        AppText.appTagline.toUpperCase(),
+                        AppText.appTagline,
                         style: TextStyle(
                           color: Colors.white.withOpacity(0.7),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 2,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ],

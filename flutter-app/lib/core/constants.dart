@@ -84,8 +84,13 @@ class AppRadius {
 }
 
 class AppText {
-  static const String appName = 'WorkTrack';
-  static const String appTagline = 'Workforce Attendance & Monitoring';
+  static const String appName = 'NAS International';
+  static const String appShortName = 'NAS';
+  /// The name as it appears in tight headers, e.g. the dashboard top bar.
+  static const String appWordmark = 'NAS INTERNATIONAL';
+  static const String appTagline = 'Delivering Today \u2022 Connecting Tomorrow';
+  /// What the product does — a descriptor, not the brand name.
+  static const String appDescriptor = 'Workforce Management';
 }
 
 /// Origin of the API host, e.g. `https://example.vercel.app`.

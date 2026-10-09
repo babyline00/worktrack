@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { BRAND } from "../brand";
 import {
   FileText,
   CalendarDays,
@@ -116,7 +117,7 @@ export function ReportsPage() {
     const esc = (v: unknown) =>
       String(v ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]!);
     w.document.write(`
-      <html><head><title>WorkTrack ${esc(reportType)} report</title>
+      <html><head><title>${BRAND.name} ${esc(reportType)} report</title>
       <style>
         body { font: 12px system-ui, sans-serif; padding: 24px; color: #111; }
         h1 { font-size: 16px; margin: 0 0 4px; }

@@ -1,4 +1,4 @@
-// WorkTrack mock data store — single source of truth for the dashboard demo.
+// NAS International mock data store — single source of truth for the dashboard demo.
 
 export type AttendanceStatus =
   | "working"

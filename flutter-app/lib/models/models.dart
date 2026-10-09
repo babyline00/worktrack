@@ -1,4 +1,4 @@
-// Data models for WorkTrack mobile app
+// Data models for the NAS International mobile app
 
 class User {
   final String id;
