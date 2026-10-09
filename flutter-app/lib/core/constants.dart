@@ -1,4 +1,4 @@
-// Core constants for WorkTrack mobile app
+// Core constants for the NAS International mobile app
 import 'package:flutter/material.dart';
 
 class ApiConstants {
