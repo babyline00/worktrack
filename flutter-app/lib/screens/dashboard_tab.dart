@@ -163,7 +163,8 @@ class _DashboardTabState extends State<DashboardTab> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const NasLockup(width: 118),
+                        // Dark ink on the blue header would not read, hence the white pill.
+                        const NasMonogram(width: 92, onDark: true),
                         // Was `onPressed: () {}` — the bell did nothing and the
                         // notifications screen was unreachable from anywhere.
                         Consumer<NotificationProvider>(

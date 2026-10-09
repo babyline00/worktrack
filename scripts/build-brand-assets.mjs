@@ -100,6 +100,36 @@ async function main() {
 
   console.log(`  icon canvas  ${box}x${box}`);
 
+  // ---------------------------------------------------------------- monogram
+  // The big "NAS" alone, cropped from the top of the lockup.
+  //
+  // The full lockup is ~2.7:1, so below ~200px the "INTERNATIONAL" strip
+  // degrades into an unreadable smudge. Compact chrome (the sidebar, the mobile
+  // header) uses this instead.
+  const MONO_CROP = 0.66; // fraction of the lockup height that is the "NAS"
+  //
+  // Crop from the *trimmed* lockup, not from a fresh read of the source. The
+  // source is 1600x639 while the trimmed lockup is 1250x461, so extracting
+  // lockup-sized coordinates from the source silently sliced off the right of
+  // the artwork and cut the letters off at the bottom.
+  const monoCrop = await sharp(lockup.buf)
+    .extract({
+      left: 0,
+      top: 0,
+      width: lockup.width,
+      height: Math.round(lockup.height * MONO_CROP),
+    })
+    .png()
+    .toBuffer();
+  const monoBuf = await sharp(monoCrop)
+    .trim({ threshold: 1, alpha: true })
+    .png()
+    .toBuffer();
+  const monoMeta = await sharp(monoBuf).metadata();
+  const mono = { buf: monoBuf, width: monoMeta.width, height: monoMeta.height };
+  console.log(`  monogram     ${mono.width}x${mono.height}`);
+  await sharp(mono.buf).png({ compressionLevel: 9 }).toFile(`${OUT}/nas-monogram.png`);
+
   // ---------------------------------------------------------------- outputs
   // Android launcher icons.
   const android = {
@@ -137,6 +167,10 @@ async function main() {
     .resize({ width: 900 })
     .png({ compressionLevel: 9 })
     .toFile("flutter-app/assets/brand/nas-lockup.png");
+  await sharp(mono.buf)
+    .resize({ width: 600 })
+    .png({ compressionLevel: 9 })
+    .toFile("flutter-app/assets/brand/nas-monogram.png");
   await sharp(iconBase)
     .resize(512, 512, { fit: "fill" })
     .png({ compressionLevel: 9 })

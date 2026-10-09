@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useEmployees, useLeaveRequests } from "@/lib/hooks";
-import { BRAND, NasIcon } from "./brand";
+import { BRAND, NasMonogram } from "./brand";
 import { useApp, type PageKey } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { Avatar } from "./ui";
@@ -102,17 +102,14 @@ export function Sidebar() {
           sidebarOpen ? "translate-x-0" : "-translate-x-full",
         )}
       >
-        {/* Logo */}
-        <div className="flex h-[72px] items-center gap-2.5 px-5">
-          <NasIcon className="h-8 w-8 shrink-0" />
-          <div className="min-w-0 leading-tight">
-            <p className="truncate text-[15px] font-bold tracking-tight text-navy">
-              {BRAND.name.toUpperCase()}
-            </p>
-            <p className="truncate text-[11px] text-muted-foreground">
-              {BRAND.descriptor}
-            </p>
-          </div>
+        {/* Logo. The wordmark is inherently ~4:1, so it needs real width to be
+            legible — and it already spells out "NAS INTERNATIONAL", so the
+            name is not repeated as text beside it. */}
+        <div className="flex h-[72px] flex-col justify-center gap-1.5 px-5">
+          <NasMonogram width={104} className="h-auto" />
+          <p className="truncate text-[11px] text-muted-foreground">
+            {BRAND.descriptor}
+          </p>
         </div>
 
         {/* Nav */}

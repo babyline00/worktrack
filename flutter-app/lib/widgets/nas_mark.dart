@@ -15,9 +15,13 @@ class NasAssets {
   NasAssets._();
   static const lockup = 'assets/brand/nas-lockup.png';
   static const icon = 'assets/brand/nas-icon.png';
+  static const monogram = 'assets/brand/nas-monogram.png';
 
   /// Intrinsic aspect ratio of the trimmed lockup (1250 x 461).
   static const double lockupRatio = 1250 / 461;
+
+  /// Intrinsic aspect ratio of the trimmed monogram (1246 x 304).
+  static const double monogramRatio = 1246 / 304;
 }
 
 /// Brand colours, taken from the artwork's dark green.
@@ -78,6 +82,42 @@ class NasIcon extends StatelessWidget {
       height: size,
       fit: BoxFit.contain,
       errorBuilder: (_, __, ___) => SizedBox(width: size, height: size),
+    );
+  }
+}
+
+/// The big "NAS" alone.
+///
+/// The wordmark is inherently about 4:1, so it needs real width to stay
+/// legible — at 30px wide it is 7px tall and unreadable. Use this instead of
+/// [NasLockup] in compact chrome.
+class NasMonogram extends StatelessWidget {
+  final double width;
+
+  /// Place on a white card. The logo is dark ink, so this is required on any
+  /// saturated background such as the blue app header.
+  final bool onDark;
+
+  const NasMonogram({super.key, this.width = 104, this.onDark = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final logo = Image.asset(
+      NasAssets.monogram,
+      width: width,
+      height: width / NasAssets.monogramRatio,
+      fit: BoxFit.contain,
+      errorBuilder: (_, __, ___) =>
+          SizedBox(width: width, height: width / NasAssets.monogramRatio),
+    );
+    if (!onDark) return logo;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: logo,
     );
   }
 }

@@ -20,8 +20,9 @@ export const BRAND = {
   descriptor: "Workforce Management",
 } as const;
 
-/** Intrinsic aspect ratio of the trimmed lockup, used to reserve layout space. */
+/** Intrinsic aspect ratios of the trimmed assets, used to reserve layout space. */
 const LOCKUP_RATIO = 1250 / 461;
+const MONOGRAM_RATIO = 1246 / 304;
 
 /**
  * The full NAS / INTERNATIONAL lockup.
@@ -52,18 +53,19 @@ export function NasLockup({
 }
 
 /**
- * Square icon version of the lockup, for favicon-style placements.
+ * The big "NAS" alone.
  *
- * Still the full lockup by choice, so it only reads below about 96px; prefer
- * [NasLockup] plus text elsewhere.
+ * This is what compact chrome should use. The full lockup is roughly 2.7:1, so
+ * below ~200px its "INTERNATIONAL" strip turns into an unreadable smudge — and in
+ * the sidebar it would also just repeat the name rendered next to it.
  */
-export function NasIcon({ className = "h-9 w-9" }: { className?: string }) {
+export function NasMonogram({ width = 32, className = "" }: { width?: number; className?: string }) {
   return (
     <Image
-      src="/brand/nas-icon-512.png"
+      src="/brand/nas-monogram.png"
       alt={`${BRAND.name} logo`}
-      width={64}
-      height={64}
+      width={width}
+      height={Math.round(width / MONOGRAM_RATIO)}
       className={className}
     />
   );
