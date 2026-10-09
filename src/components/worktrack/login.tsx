@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
-import { BRAND, NasMark } from "./brand";
+import { BRAND, NasLockup } from "./brand";
 
 export function LoginScreen() {
   const router = useRouter();
@@ -56,12 +56,13 @@ export function LoginScreen() {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="mb-8 flex flex-col items-center">
-          <NasMark className="h-16 w-16 drop-shadow-lg" />
-          <h1 className="mt-4 text-2xl font-bold tracking-tight text-white">
-            {BRAND.name}
-          </h1>
-          <p className="mt-1 text-sm text-white/60">{BRAND.tagline}</p>
-          <p className="mt-0.5 text-xs text-white/40">{BRAND.descriptor} Platform</p>
+          {/* The logo is dark ink on white, so it cannot sit straight on this
+              dark gradient — hence the card. */}
+          <NasLockup width={210} onDark className="shadow-lg" />
+          <p className="mt-4 text-xs font-medium uppercase tracking-widest text-white/60">
+            {BRAND.descriptor} Platform
+          </p>
+          <p className="mt-1 text-sm text-white/50">{BRAND.tagline}</p>
         </div>
 
         <div className="rounded-xl bg-card p-6 shadow-2xl">

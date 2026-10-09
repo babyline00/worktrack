@@ -1,4 +1,12 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- The camera plugin merges RECORD_AUDIO into every build. This app only
+         ever takes still selfies and constructs its CameraController with
+         enableAudio: false, so the permission is never exercised — it would
+         only show up as an unexplained "record audio" prompt. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" tools:node="remove" />
+
     <application
         android:label="NAS International"
         android:name="${applicationName}"

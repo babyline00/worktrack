@@ -7,6 +7,7 @@ import '../models/models.dart';
 import '../providers/attendance_provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/notification_provider.dart';
+import '../widgets/nas_mark.dart';
 import 'notifications_screen.dart';
 import 'project_selection_screen.dart';
 import 'working_session_screen.dart';
@@ -162,7 +163,7 @@ class _DashboardTabState extends State<DashboardTab> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(AppText.appWordmark, style: TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.bold, letterSpacing: 0.3)),
+                        const NasLockup(width: 118),
                         // Was `onPressed: () {}` — the bell did nothing and the
                         // notifications screen was unreachable from anywhere.
                         Consumer<NotificationProvider>(

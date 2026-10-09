@@ -92,7 +92,7 @@ class _SplashScreenState extends State<SplashScreen>
                             width: 1,
                           ),
                         ),
-                        child: const NasMark(size: 72),
+                        child: const NasLockup(width: 190, onDark: true),
                       ),
                       const SizedBox(height: AppSpacing.xl),
                       const Text(

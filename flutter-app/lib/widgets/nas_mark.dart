@@ -1,143 +1,83 @@
-// The NAS International monogram.
+// NAS International brand marks.
 //
-// Painted rather than loaded as an image so it stays crisp at every size, needs
-// no bundled asset, and avoids adding flutter_svg just for a logo. The geometry
-// matches /public/nas-mark.svg exactly — the two must be changed together.
-import 'dart:math' as math;
-
+// Uses the client's own artwork, keyed to transparency and trimmed by
+// scripts/build-brand-assets.mjs into assets/brand/. The source is JPEG on
+// flat white, which cannot be shown on the dark login hero without a white box,
+// so [NasLockup] takes `onDark` to place it on a white card.
+//
+// This replaced a CustomPainter that reproduced the logo as vector strokes. The
+// vector stayed crisp at any size and needed no asset decode, but it was a
+// hand-drawn approximation — the real artwork is now used everywhere instead.
 import 'package:flutter/material.dart';
 
-/// Brand colours, mirroring the web app's `--nas-*` tokens.
-class NasColors {
-  NasColors._();
-  static const greenLight = Color(0xFF1B5E3F);
-  static const greenDark = Color(0xFF0E3B28);
-  static const goldLight = Color(0xFFF5BB4A);
-  static const goldDark = Color(0xFFC88A2A);
-  static const goldArc = Color(0xFFF2B441);
-  static const tagline = Color(0xFF1F3A33);
+/// Asset paths, produced by scripts/build-brand-assets.mjs.
+class NasAssets {
+  NasAssets._();
+  static const lockup = 'assets/brand/nas-lockup.png';
+  static const icon = 'assets/brand/nas-icon.png';
+
+  /// Intrinsic aspect ratio of the trimmed lockup (1250 x 461).
+  static const double lockupRatio = 1250 / 461;
 }
 
-/// Design-space size the geometry below is authored in. Everything is scaled
-/// from this to the requested widget size.
-const double _kDesign = 160;
+/// Brand colours, taken from the artwork's dark green.
+class NasColors {
+  NasColors._();
+  static const green = Color(0xFF0E3B28);
+}
 
-class NasMark extends StatelessWidget {
-  final double size;
+/// The full NAS / INTERNATIONAL lockup.
+///
+/// The artwork is inherently wide, so it stops being legible below roughly
+/// 200px — at 72px the wordmark is unreadable texture and only the big "NAS"
+/// reads. Do not scale it into small chrome.
+class NasLockup extends StatelessWidget {
+  final double width;
 
-  const NasMark({super.key, this.size = 40});
+  /// Place on a white card. Required on dark backgrounds, since the logo is
+  /// dark ink.
+  final bool onDark;
+
+  const NasLockup({super.key, this.width = 220, this.onDark = false});
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: size,
-      height: size,
-      child: CustomPaint(painter: _NasMarkPainter()),
+    final logo = Image.asset(
+      NasAssets.lockup,
+      width: width,
+      height: width / NasAssets.lockupRatio,
+      fit: BoxFit.contain,
+      // A plain <img> equivalent: asset loading has no intrinsic size in
+      // release, so callers must size it, and errors should not throw.
+      errorBuilder: (_, __, ___) => SizedBox(width: width, height: width / NasAssets.lockupRatio),
+    );
+
+    if (!onDark) return logo;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: logo,
     );
   }
 }
 
-class _NasMarkPainter extends CustomPainter {
+/// Square icon version, for places that genuinely need a tile-sized mark.
+class NasIcon extends StatelessWidget {
+  final double size;
+
+  const NasIcon({super.key, this.size = 32});
+
   @override
-  void paint(Canvas canvas, Size size) {
-    final s = size.shortestSide / _kDesign;
-    canvas.save();
-    canvas.scale(s);
-
-    final tile = RRect.fromRectAndRadius(
-      const Rect.fromLTWH(0, 0, _kDesign, _kDesign),
-      const Radius.circular(30),
+  Widget build(BuildContext context) {
+    return Image.asset(
+      NasAssets.icon,
+      width: size,
+      height: size,
+      fit: BoxFit.contain,
+      errorBuilder: (_, __, ___) => SizedBox(width: size, height: size),
     );
-
-    // Tile: diagonal green gradient, matching the SVG's nas-rim.
-    canvas.drawRRect(
-      tile,
-      Paint()
-        ..shader = const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [NasColors.greenLight, NasColors.greenDark],
-        ).createShader(const Rect.fromLTWH(0, 0, _kDesign, _kDesign)),
-    );
-
-    // The gold arc that sweeps through the logo.
-    final arc = Path()
-      ..moveTo(18, 128)
-      ..cubicTo(54, 114, 108, 113, 143, 130);
-    canvas.drawPath(
-      arc,
-      Paint()
-        ..color = NasColors.goldArc.withValues(alpha: 0.55)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 4.5
-        ..strokeCap = StrokeCap.round,
-    );
-
-    // The monogram leans forward. Reproduced with a shear about the centre so
-    // the stroke weight stays even across all three letters.
-    canvas.save();
-    canvas.translate(_kDesign / 2, _kDesign / 2);
-    canvas.transform(Matrix4.skewX(-8 * math.pi / 180).storage);
-    canvas.translate(-_kDesign / 2, -_kDesign / 2);
-
-    final gold = Paint()
-      ..shader = const LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [NasColors.goldLight, NasColors.goldDark],
-      ).createShader(const Rect.fromLTWH(60, 45, 40, 70))
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.butt
-      ..strokeJoin = StrokeJoin.miter;
-
-    final white = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.butt
-      ..strokeJoin = StrokeJoin.miter;
-
-    // N
-    final n = Path()
-      ..moveTo(22, 108)
-      ..lineTo(22, 52)
-      ..lineTo(52, 108)
-      ..lineTo(52, 52);
-    canvas.drawPath(n, white..strokeWidth = 14);
-
-    // A, with a crossbar so it reads as a letter and not a peak.
-    final a = Path()
-      ..moveTo(64, 108)
-      ..lineTo(80, 52)
-      ..lineTo(96, 108);
-    canvas.drawPath(a, gold..strokeWidth = 14);
-    canvas.drawPath(
-      Path()
-        ..moveTo(70.5, 86)
-        ..lineTo(89.5, 86),
-      gold..strokeWidth = 9,
-    );
-
-    // S
-    final sPath = Path()
-      ..moveTo(140, 64)
-      ..cubicTo(136, 55, 128, 50, 120, 51)
-      ..cubicTo(109, 53, 106, 63, 114, 71)
-      ..cubicTo(121, 78, 133, 80, 137, 89)
-      ..cubicTo(142, 99, 135, 109, 124, 109)
-      ..cubicTo(115, 109, 109, 105, 106, 99);
-    canvas.drawPath(
-      sPath,
-      Paint()
-        ..color = Colors.white
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 14
-        ..strokeCap = StrokeCap.round,
-    );
-
-    canvas.restore();
-    canvas.restore();
   }
-
-  @override
-  bool shouldRepaint(_NasMarkPainter oldDelegate) => false;
 }

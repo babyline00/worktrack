@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useSession } from "next-auth/react";
-import { BRAND } from "./brand";
+import { BRAND, NasLockup } from "./brand";
 import {
   ArrowLeft,
   Camera,
@@ -167,7 +167,7 @@ export function EmployeeMobileView() {
               <circle cx="18" cy="17" r="2.5" fill="currentColor" />
             </svg>
           </div>
-          <span className="text-sm font-bold text-navy">{BRAND.shortName} INTERNATIONAL</span>
+          <NasLockup width={132} className="h-auto" />
         </div>
         <Avatar initials={employee.initials} color={employee.avatarColor} size={32} />
       </header>

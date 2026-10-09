@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useEmployees, useLeaveRequests } from "@/lib/hooks";
-import { BRAND, NasMark } from "./brand";
+import { BRAND, NasIcon } from "./brand";
 import { useApp, type PageKey } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { Avatar } from "./ui";
@@ -104,10 +104,10 @@ export function Sidebar() {
       >
         {/* Logo */}
         <div className="flex h-[72px] items-center gap-2.5 px-5">
-          <NasMark className="h-9 w-9 shrink-0" />
+          <NasIcon className="h-8 w-8 shrink-0" />
           <div className="min-w-0 leading-tight">
             <p className="truncate text-[15px] font-bold tracking-tight text-navy">
-              {BRAND.shortName} INTERNATIONAL
+              {BRAND.name.toUpperCase()}
             </p>
             <p className="truncate text-[11px] text-muted-foreground">
               {BRAND.descriptor}

@@ -16,8 +16,11 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _employeeId = TextEditingController(text: '987654321');
-  final _password = TextEditingController(text: 'admin123');
+  // These were shipped pre-filled with a real employee ID and its password, so
+  // every install opened on a form already holding working credentials. Now
+  // empty.
+  final _employeeId = TextEditingController();
+  final _password = TextEditingController();
   bool _obscurePassword = true;
 
   @override
@@ -41,7 +44,9 @@ class _LoginScreenState extends State<LoginScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   // Logo
-                  const NasMark(size: 72),
+                  // The logo is dark ink, so on this dark gradient it needs a
+                  // white card or it disappears.
+                  const NasLockup(width: 200, onDark: true),
                   const SizedBox(height: 16),
                   Text(AppText.appName, style: const TextStyle(
                     color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold,
