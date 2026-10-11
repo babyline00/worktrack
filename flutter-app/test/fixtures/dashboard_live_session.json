@@ -1,0 +1,128 @@
+{
+  "employee": {
+    "name": "Test Employee",
+    "employeeId": "000000000",
+    "avatarColor": "#2563eb",
+    "designation": "Tester",
+    "department": null
+  },
+  "company": {
+    "name": "Test Co",
+    "code": "TEST",
+    "timezone": "Asia/Karachi"
+  },
+  "maxGpsAccuracy": 50,
+  "today": {
+    "date": "2026-10-11",
+    "status": "WORKING",
+    "project": {
+      "id": "project_fixture_id",
+      "name": "Test Project",
+      "code": "TEST-001"
+    },
+    "checkIn": "2:28 PM",
+    "checkOut": null,
+    "workingMinutes": 0,
+    "sessionCount": 1,
+    "attendanceId": "attendance_fixture_id",
+    "insideGeofence": true,
+    "verificationStatus": "VERIFIED",
+    "attendance": {
+      "id": "attendance_fixture_id",
+      "project": {
+        "id": "project_fixture_id",
+        "name": "Test Project",
+        "code": "TEST-001",
+        "latitude": 31.5,
+        "longitude": 74.3,
+        "radius": 200
+      },
+      "checkInAt": "2026-01-15T09:00:00.000Z",
+      "checkOutAt": null,
+      "checkInTime": "2:28 PM",
+      "checkOutTime": null,
+      "workingMinutes": 0,
+      "lateMinutes": 0,
+      "sessionStatus": "WORKING",
+      "attendanceStatus": "PRESENT",
+      "verificationStatus": "VERIFIED",
+      "insideGeofence": true,
+      "distanceFromProject": 0,
+      "checkInPhoto": "/api/v1/attendance/photo/fixture",
+      "checkOutPhoto": null,
+      "lastLocation": {
+        "latitude": 31.5,
+        "longitude": 74.3,
+        "accuracy": 8,
+        "recordedAt": "2026-01-15T09:00:00.000Z",
+        "insideGeofence": true
+      }
+    }
+  },
+  "projects": [
+    {
+      "id": "cmuz28ad60001l606439265sf",
+      "name": "Test Project",
+      "code": "TEST-001",
+      "status": "ACTIVE",
+      "location": "Test Location",
+      "coords": {
+        "latitude": 31.5,
+        "longitude": 74.3
+      },
+      "radius": 8000
+    }
+  ],
+  "recentAttendance": [
+    {
+      "date": "2026-10-11",
+      "project": "Test Project",
+      "checkIn": "2:28 PM",
+      "checkOut": null,
+      "workingMinutes": 0,
+      "workingTime": "0m",
+      "status": "WORKING",
+      "attendanceStatus": "PRESENT"
+    },
+    {
+      "date": "2026-10-10",
+      "project": "Test Project",
+      "checkIn": "1:00 PM",
+      "checkOut": "1:01 PM",
+      "workingMinutes": 1,
+      "workingTime": "1m",
+      "status": "COMPLETED",
+      "attendanceStatus": "PRESENT"
+    },
+    {
+      "date": "2026-10-08",
+      "project": "Test Project",
+      "checkIn": "12:34 AM",
+      "checkOut": "12:34 AM",
+      "workingMinutes": 1,
+      "workingTime": "1m",
+      "status": "COMPLETED",
+      "attendanceStatus": "PRESENT"
+    },
+    {
+      "date": "2026-10-08",
+      "project": "Test Project",
+      "checkIn": "12:15 AM",
+      "checkOut": "12:19 AM",
+      "workingMinutes": 4,
+      "workingTime": "4m",
+      "status": "COMPLETED",
+      "attendanceStatus": "PRESENT"
+    },
+    {
+      "date": "2026-10-08",
+      "project": "Test Project",
+      "checkIn": "12:12 AM",
+      "checkOut": "12:13 AM",
+      "workingMinutes": 1,
+      "workingTime": "1m",
+      "status": "COMPLETED",
+      "attendanceStatus": "PRESENT"
+    }
+  ]
+}

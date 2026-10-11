@@ -135,8 +135,20 @@ class Attendance {
     int? totalWorkingMinutes,
   }) : totalWorkingMinutes = totalWorkingMinutes ?? 0;
 
+  /// Accepts either the `/mobile/attendance/today` envelope
+  /// (`{ status, sessionCount, totalWorkingMinutes, attendance: {...} }`) or a
+  /// bare session object.
+  ///
+  /// The dashboard embeds the bare session under `today.attendance`. Reading it
+  /// through this parser as though it were an envelope produced a session with a
+  /// blank id, no coordinates and no check-in timestamp — so the live geofence
+  /// and timer would silently do nothing.
   factory Attendance.fromJson(Map<String, dynamic> json) {
-    final att = json['attendance'] as Map<String, dynamic>?;
+    final nested = json['attendance'] as Map<String, dynamic>?;
+    final att = nested ??
+        (json.containsKey('sessionStatus') || json.containsKey('checkInAt')
+            ? json
+            : null);
     final project = att?['project'] as Map<String, dynamic>?;
     return Attendance(
       id: att?['id'] ?? json['id'] ?? '',
