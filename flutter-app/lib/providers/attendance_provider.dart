@@ -40,11 +40,14 @@ class AttendanceProvider extends ChangeNotifier {
       final data = await ApiClient.instance.get('/mobile/dashboard');
       _dashboard = DashboardData.fromJson(data);
       applyGpsAccuracyLimit(_dashboard?.maxGpsAccuracy);
-      if (_dashboard?.today != null && _dashboard!.today!.attendanceId != null) {
-        await loadTodayAttendance();
-      } else {
-        _todayAttendance = null;
-      }
+
+      // The dashboard now embeds the same session object /mobile/attendance/today
+      // returns, so the session is built from it directly. It used to `await
+      // loadTodayAttendance()` here, which put a second HTTP request in series
+      // behind the first — roughly 1.2s of pure waiting on every cold start, on
+      // every resume, and after every check-in and check-out.
+      final embedded = _dashboard?.today?.attendanceJson;
+      _todayAttendance = embedded != null ? Attendance.fromJson(embedded) : null;
     } catch (e) {
       // Surfaced rather than swallowed: a generic message made this look
       // identical to an empty dashboard.
@@ -69,6 +72,12 @@ class AttendanceProvider extends ChangeNotifier {
   }
 
   Future<void> loadHistory({int page = 1, int limit = 20}) async {
+    // Guard here rather than in the widget: the scroll listener, a pull-to-
+    // refresh and a tab switch can all reach this at once, and two overlapping
+    // page loads appended the same rows twice.
+    if (_historyLoading && page > 1) return;
+    _historyLoading = true;
+
     try {
       final data = await ApiClient.instance.get(
         '/mobile/attendance/history',
@@ -77,22 +86,44 @@ class AttendanceProvider extends ChangeNotifier {
       final items = ((data['data'] as List?) ?? [])
           .map((a) => AttendanceHistoryItem.fromJson(a as Map<String, dynamic>))
           .toList();
+      final pagination = (data['pagination'] as Map<String, dynamic>?) ?? const {};
+
       if (page == 1) {
         _history = items;
       } else {
         _history.addAll(items);
       }
-      notifyListeners();
+      _historyPage = page;
+      final total = (pagination['total'] as num?)?.toInt();
+      final limitActual = (pagination['limit'] as num?)?.toInt() ?? limit;
+      // Derived rather than read from a `pages` field the API may not send, so
+      // the scroll listener cannot keep asking past the end.
+      _historyLastPage =
+          total != null && limitActual > 0
+              ? (total / limitActual).ceil().clamp(1, 1 << 31)
+              : page;
+      _historyError = null;
     } catch (e) {
       // Swallowing this made a failed fetch indistinguishable from "no
       // records yet", so the tab showed an empty state that looked valid.
       _historyError = 'Could not load attendance history';
+    } finally {
+      _historyLoading = false;
       notifyListeners();
     }
   }
 
-  String? _historyError = '';
-  String? get historyError => _historyError == '' ? null : _historyError;
+  bool _historyLoading = false;
+  bool get isLoadingHistory => _historyLoading;
+  int _historyPage = 1;
+  int _historyLastPage = 1;
+
+  /// Highest page worth requesting. The scroll listener stops here instead of
+  /// walking off the end one empty request at a time.
+  int get lastPage => _historyLastPage;
+
+  String? _historyError;
+  String? get historyError => _historyError;
 
   /// Live position for the in-session tracker, refreshed on demand.
   Position? _latestPosition;
@@ -343,7 +374,8 @@ class AttendanceProvider extends ChangeNotifier {
       );
 
       if (response.data['success'] == true) {
-        await loadTodayAttendance();
+        // loadDashboard returns the updated session in its payload, so the
+        // follow-up /mobile/attendance/today call is no longer needed.
         await loadDashboard();
         _isCheckingIn = false;
         notifyListeners();
@@ -411,7 +443,6 @@ class AttendanceProvider extends ChangeNotifier {
       if (response.data['success'] == true) {
         // Check for geofence warning
         _geofenceWarning = response.data['data']?['geofenceWarning'];
-        await loadTodayAttendance();
         await loadDashboard();
         _isCheckingOut = false;
         notifyListeners();
@@ -506,7 +537,6 @@ class AttendanceProvider extends ChangeNotifier {
         _geofenceWatch.reset();
         _insideGeofence = false;
         _autoCheckOutDue = false;
-        await loadTodayAttendance();
         await loadDashboard();
       }
       _evaluateGeofence();

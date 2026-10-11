@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../core/constants.dart';
+import '../models/models.dart' show AttendanceHistoryItem;
 import '../providers/attendance_provider.dart';
 import 'attendance_detail_screen.dart';
 import '../models/attendance.dart' as detail_models;
@@ -26,11 +27,24 @@ class _AttendanceHistoryTabState extends State<AttendanceHistoryTab> {
     _scrollController.addListener(_onScroll);
   }
 
+  /// True while a page request is in flight, so one scroll gesture cannot queue
+  /// several overlapping loads.
+  bool _loadingPage = false;
+
   void _onScroll() {
-    if (_scrollController.position.pixels == _scrollController.position.maxScrollExtent) {
-      _page++;
-      context.read<AttendanceProvider>().loadHistory(page: _page);
-    }
+    final pos = _scrollController.position;
+    if (!pos.hasContentDimensions) return;
+    // 200px of lead time starts the next page before the user reaches the
+    // bottom, instead of only firing on the final frame.
+    if (pos.pixels < pos.maxScrollExtent - 200) return;
+    if (_loadingPage) return;
+    if (_page >= context.read<AttendanceProvider>().lastPage) return;
+
+    _loadingPage = true;
+    _page += 1;
+    context.read<AttendanceProvider>().loadHistory(page: _page).whenComplete(() {
+      _loadingPage = false;
+    });
   }
 
   @override
@@ -41,19 +55,25 @@ class _AttendanceHistoryTabState extends State<AttendanceHistoryTab> {
 
   @override
   Widget build(BuildContext context) {
-    final att = context.watch<AttendanceProvider>();
+    // Selector, not watch: during a live session the provider notifies once a
+    // second for the elapsed-time ticker, and `watch` would rebuild this whole
+    // list — every card — on every tick even though history never changes.
+    final provider = context.read<AttendanceProvider>();
+    final history = context.select<AttendanceProvider, List<AttendanceHistoryItem>>(
+      (a) => a.history,
+    );
     return Scaffold(
       appBar: AppBar(title: const Text('Attendance History')),
       body: RefreshIndicator(
-        onRefresh: () { _page = 1; return att.loadHistory(page: 1); },
-        child: att.history.isEmpty
+        onRefresh: () { _page = 1; return provider.loadHistory(page: 1); },
+        child: history.isEmpty
           ? const Center(child: Text('No attendance records yet', style: TextStyle(color: AppColors.textSecondary)))
           : ListView.builder(
               controller: _scrollController,
               padding: const EdgeInsets.all(16),
-              itemCount: att.history.length,
+              itemCount: history.length,
               itemBuilder: (ctx, i) {
-                final item = att.history[i];
+                final item = history[i];
                 return Card(
                   child: ListTile(
                     // Tapping a record opens the full detail, including the

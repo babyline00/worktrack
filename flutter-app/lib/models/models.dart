@@ -343,6 +343,11 @@ class TodayAttendance {
   /// the day's total can span more than one session.
   final int sessionCount;
 
+  /// The session object the dashboard embeds, in the same shape
+  /// /mobile/attendance/today returns. Present so the app can build the session
+  /// from a single request instead of following the dashboard with a second one.
+  final Map<String, dynamic>? attendanceJson;
+
   TodayAttendance({
     required this.date,
     required this.status,
@@ -354,6 +359,7 @@ class TodayAttendance {
     this.attendanceId,
     required this.insideGeofence,
     this.sessionCount = 1,
+    this.attendanceJson,
   });
 
   factory TodayAttendance.fromJson(Map<String, dynamic> json) {
@@ -369,6 +375,7 @@ class TodayAttendance {
       attendanceId: json['attendanceId'],
       insideGeofence: json['insideGeofence'] ?? true,
       sessionCount: json['sessionCount'] ?? 1,
+      attendanceJson: json['attendance'] as Map<String, dynamic>?,
     );
   }
 

@@ -36,7 +36,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (!mounted) return;
       final att = context.read<AttendanceProvider>();
       att.loadDashboard();
-      att.loadUnreadNotifications();
+      // Only NotificationProvider drives the badge. The attendance provider has
+      // its own unreadNotifications field that hits the identical endpoint, so
+      // both were firing the same request on every cold start.
       context.read<NotificationProvider>().loadUnreadCount();
       // Re-attach tracking if a session was already open when the app started,
       // e.g. after a cold start mid-shift.
@@ -65,9 +67,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           _ensureTracking(att);
           att.resumeLiveTracking();
           // Positions and attendance may have moved on while we were away.
-          att.loadTodayAttendance();
+          // loadDashboard now carries the session, so loadTodayAttendance
+          // would only re-fetch what just arrived.
           att.loadDashboard();
-          att.loadUnreadNotifications();
           context.read<NotificationProvider>().loadUnreadCount();
         }
       case AppLifecycleState.inactive:
