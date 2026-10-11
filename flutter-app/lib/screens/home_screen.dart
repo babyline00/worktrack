@@ -96,6 +96,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// `initState` runs once at startup — before any check-in. Without this,
   /// Attendance and Leave kept showing whatever was loaded at launch.
   void _refreshTab(int index) {
+    // Tapping the tab that is already showing refetched it. On Home that is the
+    // most expensive endpoint in the app, and a user tapping Home a few times
+    // while reading turns into several full dashboard requests.
+    if (index == _currentIndex) return;
+
     switch (index) {
       case 0:
         // Pick up check-ins/out made since the screen was built.
@@ -124,8 +129,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (i) {
+          // setState first, then refresh: `_refreshTab` compares against
+          // `_currentIndex` to skip a no-op tap.
+          final changed = i != _currentIndex;
           setState(() => _currentIndex = i);
-          _refreshTab(i);
+          if (changed) _refreshTab(i);
         },
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home_outlined), activeIcon: Icon(Icons.home), label: 'Home'),
