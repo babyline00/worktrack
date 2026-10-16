@@ -34,6 +34,7 @@ model Company {
   shifts      Shift[]
   settings    Setting[]
   departments Department[]
+  ledgerEntries LedgerEntry[]
 }
 
 model Department {
@@ -67,6 +68,7 @@ model User {
   refreshTokens RefreshToken[]
   auditLogs    AuditLog[]
   devices      Device[]
+  ledgerEntries LedgerEntry[]
 
   @@unique([employeeId])
 }
@@ -122,6 +124,7 @@ model Project {
   attendance  Attendance[]
 
   @@index([companyId])
+  ledgerEntries LedgerEntry[]
 }
 
 model Assignment {
@@ -356,11 +359,22 @@ model AuditLog {
   createdAt  DateTime @default(now())
 
   performedBy User?       @relation(fields: [performedById], references: [id])
-  attendance  Attendance? @relation(fields: [entityId], references: [id])
+  // Deliberately its own column, not `entityId`.
+  //
+  // `entityId` is a generic identifier — it holds a leave id, a project id, a
+  // ledger entry id and so on. It used to double as the foreign key to
+  // Attendance, which meant every audit row for a non-attendance entity
+  // violated the constraint and the whole auditLog.create() threw. Leave
+  // approval, project employee changes and employee status changes were
+  // therefore half-applying: the real write committed, the audit did not.
+  // Only rows whose entity is an attendance record populate this.
+  attendanceId String?
+  attendance   Attendance? @relation(fields: [attendanceId], references: [id])
 
   @@index([entity, entityId])
   @@index([performedById])
   @@index([companyId])
+  @@index([attendanceId])
 }
 
 model RefreshToken {
@@ -399,4 +413,50 @@ model ReportJob {
 
   @@index([companyId])
   @@index([status])
+}
+
+// ============================================================
+// FINANCE — internal only
+// ============================================================
+
+// One line in the company's credit/debit balance sheet: money received
+// (CREDIT) or money paid out (DEBIT).
+//
+// Deliberately has no route on the /api/v1 JWT surface. That surface is what
+// the mobile app and any integrator authenticate against, and a company's
+// cash position is not something every employee should be able to page
+// through. Access is admin-only over the cookie-session /api/ledger routes.
+model LedgerEntry {
+  id          String   @id @default(cuid())
+  companyId   String
+  // The calendar day this belongs to, at the company's midnight — same
+  // convention as Attendance.attendanceDate, so a period query means the same
+  // thing in both places.
+  entryDate   DateTime
+  type        String   // CREDIT (in) | DEBIT (out)
+  category    String   // free text: "Client Payment", "Payroll", "Equipment"...
+  // Money. Decimal rather than Float: binary floating point cannot represent
+  // 0.01 exactly, and a balance sheet that is off by a paisa is not a balance
+  // sheet anyone trusts.
+  amount      Decimal  @db.Decimal(14, 2)
+  description String?
+  // Invoice number, receipt number, or anything the admin can match against a
+  // bank statement.
+  reference   String?
+  projectId   String?
+  // VOID keeps a line visible in the audit trail while excluding it from every
+  // balance. Deleting is also possible but leaves nothing behind.
+  status      String   @default("POSTED") // POSTED | VOID
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  project   Project? @relation(fields: [projectId], references: [id])
+  createdBy User?    @relation(fields: [createdById], references: [id])
+
+  // The balance-sheet view always filters by company and date range together,
+  // so that pair is the index rather than either column alone.
+  @@index([companyId, entryDate])
+  @@index([companyId, type])
 }

@@ -11,6 +11,7 @@ export type PageKey =
   | "shifts"
   | "leave"
   | "reports"
+  | "ledger"
   | "settings"
   | "api-docs"
   | "help";

@@ -15,6 +15,7 @@ import { AttendancePage } from "@/components/worktrack/pages/attendance";
 import { ShiftsPage } from "@/components/worktrack/pages/shifts";
 import { LeavePage } from "@/components/worktrack/pages/leave";
 import { ReportsPage } from "@/components/worktrack/pages/reports";
+import { LedgerPage } from "@/components/worktrack/pages/ledger";
 import { SettingsPage } from "@/components/worktrack/pages/settings";
 import { ApiDocsPage } from "@/components/worktrack/pages/api-docs";
 import { HelpSupportPage } from "@/components/worktrack/pages/help";
@@ -68,6 +69,7 @@ export default function Home() {
           {page === "shifts" && <ShiftsPage />}
           {page === "leave" && <LeavePage />}
           {page === "reports" && <ReportsPage />}
+          {page === "ledger" && <LedgerPage />}
           {page === "settings" && <SettingsPage />}
           {page === "api-docs" && <ApiDocsPage />}
           {page === "help" && <HelpSupportPage />}

@@ -25,6 +25,8 @@ import {
 } from "recharts";
 import { useDashboard } from "@/lib/hooks";
 import { useApp } from "@/lib/store";
+import { useSession } from "next-auth/react";
+import { DashboardFinanceCard } from "../dashboard-finance";
 import { Avatar, Card, PageHeader, SectionTitle, StatusPill } from "../ui";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -43,6 +45,12 @@ const TONE_STYLES: Record<string, { bg: string; text: string }> = {
 
 export function DashboardHome() {
   const { setPage, setDrawerEmployee } = useApp();
+  // The finance card reads /api/ledger, which is admin-only. Mounted only
+  // for admins so a manager is never shown a card that 403s.
+  const { data: session } = useSession();
+  const isAdmin = ["SUPER_ADMIN", "ADMIN"].includes(
+    String((session?.user as any)?.role ?? ""),
+  );
   const [trendTab, setTrendTab] = useState<"7d" | "30d" | "3m">("7d");
   const trendDays = trendTab === "3m" ? 90 : trendTab === "30d" ? 30 : 7;
   const { data, isLoading, refetch, isFetching } = useDashboard(trendDays);
@@ -343,6 +351,9 @@ export function DashboardHome() {
           </div>
         </Card>
       </div>
+
+      {/* Cash position — admins only */}
+      {isAdmin && <DashboardFinanceCard />}
 
       {/* Project Performance */}
       <Card>

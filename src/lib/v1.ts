@@ -299,11 +299,19 @@ export async function auditLog(params: {
   reason?: string;
   req?: Request;
 }) {
+  // `entityId` is a generic identifier that may hold a leave id, a project id,
+  // a ledger entry id or an attendance id. It used to double as the foreign key
+  // to Attendance, so auditing anything that was not an attendance record threw
+  // a constraint violation and the audit was silently lost. Only attendance
+  // entities populate the dedicated column now.
+  const isAttendanceEntity = params.entity.toLowerCase() === "attendance";
+
   await db.auditLog.create({
     data: {
       action: params.action,
       entity: params.entity,
       entityId: params.entityId,
+      attendanceId: isAttendanceEntity ? params.entityId : null,
       performedById: params.performedById,
       companyId: params.companyId,
       oldValue: params.oldValue ? JSON.stringify(params.oldValue) : null,

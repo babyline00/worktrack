@@ -10,6 +10,7 @@ import {
   Clock,
   CalendarHeart,
   FileBarChart,
+  Scale,
   Settings,
   LifeBuoy,
   Bell,
@@ -25,7 +26,14 @@ import { Button } from "@/components/ui/button";
 
 const NAV: {
   group?: string;
-  items: { key: PageKey; label: string; icon: React.ElementType; badge?: string }[];
+  items: {
+    key: PageKey;
+    label: string;
+    icon: React.ElementType;
+    badge?: string;
+    /** Rendered only for SUPER_ADMIN / ADMIN. */
+    adminOnly?: boolean;
+  }[];
 }[] = [
   {
     items: [
@@ -45,6 +53,13 @@ const NAV: {
   {
     items: [{ key: "reports", label: "Reports", icon: FileBarChart }],
   },
+    {
+      // Internal finance. Hidden for non-admins so the nav matches what
+      // /api/ledger actually allows — the API is the real control; this only
+      // stops anyone being offered a page that will 403.
+      group: "Finance",
+      items: [{ key: "ledger", label: "Credit & Debit", icon: Scale, adminOnly: true }],
+    },
 ];
 
 const BOTTOM = [
@@ -73,6 +88,11 @@ export function Sidebar() {
   };
 
   const userName = session?.user?.name ?? "Signed in";
+  // Drives the admin-only nav entries. Only an affordance — /api/ledger
+  // enforces the same rule, so hiding the link is not the control.
+  const isAdmin = ["SUPER_ADMIN", "ADMIN"].includes(
+    String((session?.user as any)?.role ?? ""),
+  );
   const userInitials =
     userName
       .split(" ")
@@ -110,9 +130,13 @@ export function Sidebar() {
 
         {/* Nav */}
         <nav className="scroll-thin flex-1 overflow-y-auto px-3 py-2">
-          {NAV.map((section, si) => (
+          {NAV.filter((section) =>
+            section.items.some((item) => !item.adminOnly || isAdmin),
+          ).map((section, si, visible) => (
             <div key={si} className="mb-2">
-              {section.items.map((item) => {
+              {section.items
+                .filter((item) => !item.adminOnly || isAdmin)
+                .map((item) => {
                 const Icon = item.icon;
                 const active = page === item.key;
                 return (
@@ -149,7 +173,7 @@ export function Sidebar() {
                   </button>
                 );
               })}
-              {si < NAV.length - 1 && (
+              {si < visible.length - 1 && (
                 <div className="my-2 border-t border-sidebar-border" />
               )}
             </div>
