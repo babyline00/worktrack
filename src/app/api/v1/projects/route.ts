@@ -6,6 +6,7 @@ import {
   ApiError,
   ERRORS,
   nowInTimezone,
+  resolveTimezone,
 } from "@/lib/v1";
 
 export const runtime = "nodejs";
@@ -14,7 +15,7 @@ export const runtime = "nodejs";
 export async function GET(req: Request) {
   try {
     const user = await requireRole(req, ["SUPER_ADMIN", "ADMIN", "MANAGER"]);
-    const { startOfDay } = nowInTimezone();
+    const { startOfDay } = nowInTimezone(await resolveTimezone(user));
 
     const projects = await db.project.findMany({
       where: { companyId: user.companyId },

@@ -1,6 +1,7 @@
 // Project selection screen — pick project before check-in
 import 'package:flutter/material.dart';
 import '../core/constants.dart';
+import '../core/project_preference.dart';
 import '../models/models.dart';
 import 'check_in_camera_screen.dart';
 
@@ -30,6 +31,8 @@ class ProjectSelectionScreen extends StatelessWidget {
               isThreeLine: true,
               trailing: const Icon(Icons.chevron_right, color: AppColors.textMuted),
               onTap: () async {
+                // Remember the choice so the next check-in does not ask again.
+                await ProjectPreference.instance.setLastProjectId(p.id);
                 final checkedIn = await Navigator.push<bool>(
                   context,
                   MaterialPageRoute(

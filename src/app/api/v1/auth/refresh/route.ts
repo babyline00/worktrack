@@ -6,6 +6,7 @@ import {
   apiSuccess,
   apiError,
   ApiError,
+  resolveTimezone,
 } from "@/lib/v1";
 
 export const runtime = "nodejs";
@@ -31,7 +32,9 @@ export async function POST(req: Request) {
       throw new ApiError("INVALID_REFRESH_TOKEN", "Refresh token has been revoked.", 401);
     }
 
-    // Issue new access token
+    // Issue new access token. `timezone` is carried forward from the refresh
+    // token; a token minted before that field existed costs one lookup here,
+    // once, rather than on every later request that needs to resolve "today".
     const access = signAccessToken({
       sub: payload.sub,
       email: payload.email,
@@ -39,6 +42,7 @@ export async function POST(req: Request) {
       role: payload.role,
       companyId: payload.companyId,
       employeeId: payload.employeeId,
+      timezone: payload.timezone ?? (await resolveTimezone(payload)),
     });
 
     // Optional: rotate refresh token (revoke old, issue new) — uncomment for strict rotation

@@ -7,6 +7,7 @@ import 'package:dio/dio.dart';
 import 'package:geolocator/geolocator.dart';
 import '../core/api_client.dart';
 import '../core/geofence.dart';
+import '../core/local_cache.dart';
 import '../core/secure_storage.dart';
 import '../models/models.dart';
 // `models.dart` declares its own `TodayAttendance`/`AttendanceHistoryItem`,
@@ -31,32 +32,80 @@ class AttendanceProvider extends ChangeNotifier {
   bool get isCheckingOut => _isCheckingOut;
   String? get error => _error;
 
-  Future<void> loadDashboard() async {
-    _isLoading = true;
+  /// When the dashboard on screen came from the device cache rather than the
+  /// server, and how old it is. Null while live.
+  DateTime? _dashboardFetchedAt;
+
+  /// True when the visible dashboard is a cached copy awaiting refresh.
+  bool get isShowingCachedDashboard => _dashboardFetchedAt != null;
+
+  /// How stale the visible dashboard is. Null when it came from the server.
+  Duration? get dashboardAge => _dashboardFetchedAt == null
+      ? null
+      : DateTime.now().difference(_dashboardFetchedAt!);
+
+  /// Paints the last known dashboard immediately, then refreshes behind it.
+  ///
+  /// [allowCache] is false when the caller needs to know the truth right now —
+  /// resuming from background, or immediately after a check-in or check-out,
+  /// where a cached "Not Checked In" would be actively misleading.
+  Future<void> loadDashboard({bool allowCache = true}) async {
     _error = null;
-    notifyListeners();
+
+    if (allowCache && _dashboard == null) {
+      // Cold start only. Painting the previous state first turns a 1.4-2.1s
+      // spinner into an instant screen that updates when the network answers.
+      final cached = await LocalCache.instance
+          .read<DashboardData>('dashboard', (d) => DashboardData.fromJson(d as Map<String, dynamic>));
+      if (cached != null) {
+        _applyDashboard(cached.data);
+        _dashboardFetchedAt = cached.fetchedAt;
+        // Deliberately not clearing _isLoading: the screen stays in its content
+        // state, and a quiet "updated N ago" line communicates the staleness.
+        notifyListeners();
+      } else {
+        _isLoading = true;
+        notifyListeners();
+      }
+    } else if (allowCache) {
+      // Already showing data — a background refresh should not blank it.
+    } else {
+      _isLoading = true;
+      notifyListeners();
+    }
 
     try {
       final data = await ApiClient.instance.get('/mobile/dashboard');
-      _dashboard = DashboardData.fromJson(data);
-      applyGpsAccuracyLimit(_dashboard?.maxGpsAccuracy);
-
-      // The dashboard now embeds the same session object /mobile/attendance/today
-      // returns, so the session is built from it directly. It used to `await
-      // loadTodayAttendance()` here, which put a second HTTP request in series
-      // behind the first — roughly 1.2s of pure waiting on every cold start, on
-      // every resume, and after every check-in and check-out.
-      final embedded = _dashboard?.today?.attendanceJson;
-      _todayAttendance = embedded != null ? Attendance.fromJson(embedded) : null;
+      _applyDashboard(DashboardData.fromJson(data));
+      _dashboardFetchedAt = null;
+      await LocalCache.instance.write('dashboard', data);
     } catch (e) {
-      // Surfaced rather than swallowed: a generic message made this look
-      // identical to an empty dashboard.
-      _error = 'Failed to load dashboard: $e';
+      // A cached dashboard that survives a failed refresh is far better than an
+      // empty one — but the user has to be told the data is not live.
+      if (_dashboard == null) {
+        _error = 'Could not reach the server. Check your connection.';
+      } else {
+        _error = 'Showing your last known data — could not refresh.';
+      }
       debugPrint('loadDashboard failed: $e');
     }
 
     _isLoading = false;
     notifyListeners();
+  }
+
+  /// Applies a dashboard payload to every field derived from it.
+  void _applyDashboard(DashboardData dashboard) {
+    _dashboard = dashboard;
+    applyGpsAccuracyLimit(dashboard.maxGpsAccuracy);
+
+    // The dashboard embeds the same session object /mobile/attendance/today
+    // returns, so the session is built from it directly. It used to `await
+    // loadTodayAttendance()` here, which put a second HTTP request in series
+    // behind the first — roughly 1.2s of pure waiting on every cold start, on
+    // every resume, and after every check-in and check-out.
+    final embedded = dashboard.today?.attendanceJson;
+    _todayAttendance = embedded != null ? Attendance.fromJson(embedded) : null;
   }
 
   Future<void> loadTodayAttendance() async {
@@ -376,7 +425,9 @@ class AttendanceProvider extends ChangeNotifier {
       if (response.data['success'] == true) {
         // loadDashboard returns the updated session in its payload, so the
         // follow-up /mobile/attendance/today call is no longer needed.
-        await loadDashboard();
+        // Fresh, never cached: a cached "Not Checked In" shown straight after a
+        // successful check-in would be a lie.
+        await loadDashboard(allowCache: false);
         _isCheckingIn = false;
         notifyListeners();
         return true;
@@ -443,7 +494,7 @@ class AttendanceProvider extends ChangeNotifier {
       if (response.data['success'] == true) {
         // Check for geofence warning
         _geofenceWarning = response.data['data']?['geofenceWarning'];
-        await loadDashboard();
+        await loadDashboard(allowCache: false);
         _isCheckingOut = false;
         notifyListeners();
         return true;
@@ -537,7 +588,9 @@ class AttendanceProvider extends ChangeNotifier {
         _geofenceWatch.reset();
         _insideGeofence = false;
         _autoCheckOutDue = false;
-        await loadDashboard();
+        // Fresh: the server just closed the session, so a cached dashboard would
+        // still claim the employee is working.
+        await loadDashboard(allowCache: false);
       }
       _evaluateGeofence();
       notifyListeners();

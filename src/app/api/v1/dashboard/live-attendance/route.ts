@@ -7,6 +7,7 @@ import {
   ERRORS,
   nowInTimezone,
   formatTimeInTimezone,
+  resolveTimezone,
 } from "@/lib/v1";
 
 export const runtime = "nodejs";
@@ -18,7 +19,7 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const projectId = url.searchParams.get("projectId");
     const status = url.searchParams.get("status");
-    const { startOfDay } = nowInTimezone();
+    const { startOfDay } = nowInTimezone(await resolveTimezone(user));
 
     const where: any = {
       attendanceDate: startOfDay,

@@ -70,6 +70,9 @@ export async function POST(req: Request) {
       role: user.role,
       companyId: company.id,
       employeeId: employee?.id,
+      // Carried on the token so every downstream request can resolve "today"
+      // for this tenant without an extra query for the company row.
+      timezone: company.timezone,
     };
     const access = signAccessToken(tokenPayload);
     const refresh = signRefreshToken(tokenPayload);

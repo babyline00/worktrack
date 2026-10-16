@@ -8,6 +8,7 @@ import {
   formatTimeInTimezone,
   paginate,
   formatMins,
+  formatDateInTimezone,
 } from "@/lib/v1";
 
 export const runtime = "nodejs";
@@ -54,7 +55,10 @@ export async function GET(req: Request) {
     return apiSuccess({
       data: records.map((r) => ({
         id: r.id,
-        date: r.attendanceDate.toISOString().split("T")[0],
+        // Rendered in the tenant's timezone, not UTC — `attendanceDate` is
+        // local midnight, so the raw ISO slice labelled every session a day
+        // early for any company east or west of Greenwich.
+        date: formatDateInTimezone(r.attendanceDate, emp.company.timezone),
         project: r.project?.name ?? "—",
         projectCode: r.project?.code ?? null,
         checkIn: formatTimeInTimezone(r.checkIn, emp.company.timezone),

@@ -10,6 +10,7 @@ import {
   checkIdempotency,
   storeIdempotency,
   nowInTimezone,
+  closeStaleSessions,
   formatTimeInTimezone,
 } from "@/lib/v1";
 import { emitCheckin } from "@/lib/realtime-server";
@@ -82,7 +83,19 @@ export async function POST(req: Request) {
     // between deployments), so a completed session must not block a new one.
     // Only an unclosed session does — you cannot check in twice without
     // checking out in between.
-    const { startOfDay } = nowInTimezone();
+    //
+    // A session left open on a *previous* day is not a live shift, it is an
+    // abandoned one, and it used to be a permanent lockout: this check spans
+    // all dates while `/today` only ever showed today's sessions, so the app
+    // offered CHECK IN and CHECK OUT could never resolve it. Retire those first
+    // so the employee is not blocked by their own forgotten check-out.
+    await closeStaleSessions({
+      employeeId: employee.id,
+      companyId: employee.companyId,
+      timezone: employee.company.timezone,
+    });
+
+    const { startOfDay } = nowInTimezone(employee.company.timezone);
     const openSession = await db.attendance.findFirst({
       where: {
         employeeId: employee.id,

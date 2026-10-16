@@ -8,6 +8,8 @@ import {
   formatTimeInTimezone,
   formatMins,
   nowInTimezone,
+  resolveTimezone,
+  formatDateInTimezone,
 } from "@/lib/v1";
 
 export const runtime = "nodejs";
@@ -20,7 +22,8 @@ export async function GET(req: Request) {
     if (!user.employeeId) throw ERRORS.FORBIDDEN("Mobile dashboard is for employee accounts only");
     if (!user.companyId) throw ERRORS.FORBIDDEN("Token is not scoped to a company");
 
-    const { startOfDay } = nowInTimezone();
+    const timezone = await resolveTimezone(user);
+    const { startOfDay } = nowInTimezone(timezone);
 
     // These four reads used to be awaited one after another, so every request
     // paid four serialised database round-trips. None of them needs another's
@@ -85,7 +88,7 @@ export async function GET(req: Request) {
       .reduce((sum, s) => sum + (s.workingMins ?? 0), 0);
 
     let today: any = {
-      date: startOfDay.toISOString().split("T")[0],
+      date: formatDateInTimezone(startOfDay, timezone),
       status: "NOT_STARTED",
       project: null,
       checkIn: null,
@@ -96,7 +99,7 @@ export async function GET(req: Request) {
 
     if (todayAttendance) {
       today = {
-        date: startOfDay.toISOString().split("T")[0],
+        date: formatDateInTimezone(startOfDay, timezone),
         status: todayAttendance.sessionStatus,
         project: todayAttendance.project
           ? { id: todayAttendance.project.id, name: todayAttendance.project.name, code: todayAttendance.project.code }
@@ -185,7 +188,7 @@ export async function GET(req: Request) {
         radius: a.project.radiusM,
       })),
       recentAttendance: recent.map((r) => ({
-        date: r.attendanceDate.toISOString().split("T")[0],
+        date: formatDateInTimezone(r.attendanceDate, timezone),
         project: r.project?.name ?? "—",
         checkIn: formatTimeInTimezone(r.checkIn, employee.company.timezone),
         checkOut: formatTimeInTimezone(r.checkOut, employee.company.timezone),

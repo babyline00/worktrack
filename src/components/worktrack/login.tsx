@@ -125,15 +125,6 @@ export function LoginScreen() {
                   admin@worktrack.io / admin123
                 </span>
               </button>
-              <button
-                onClick={() => quickLogin("ahmad.khan@worktrack.io", "employee123")}
-                className="block w-full rounded-md bg-card px-3 py-1.5 text-left text-xs hover:bg-muted"
-              >
-                <span className="font-semibold text-navy">Employee →</span>{" "}
-                <span className="text-muted-foreground">
-                  ahmad.khan@worktrack.io / employee123
-                </span>
-              </button>
             </div>
           </div>
         </div>

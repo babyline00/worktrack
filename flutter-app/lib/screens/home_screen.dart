@@ -66,10 +66,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           _wasBackgrounded = false;
           _ensureTracking(att);
           att.resumeLiveTracking();
-          // Positions and attendance may have moved on while we were away.
-          // loadDashboard now carries the session, so loadTodayAttendance
-          // would only re-fetch what just arrived.
-          att.loadDashboard();
+          // The shift may have started or ended in another app while we were
+          // away, so this must be a live read: a cached dashboard could still
+          // say "Not Checked In" for a session that is actually open.
+          att.loadDashboard(allowCache: false);
           context.read<NotificationProvider>().loadUnreadCount();
         }
       case AppLifecycleState.inactive:

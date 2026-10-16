@@ -7,6 +7,7 @@ import {
   ERRORS,
   nowInTimezone,
   formatTimeInTimezone,
+  resolveTimezone,
 } from "@/lib/v1";
 
 export const runtime = "nodejs";
@@ -15,7 +16,7 @@ export const runtime = "nodejs";
 export async function GET(req: Request) {
   try {
     const user = await requireRole(req, ["SUPER_ADMIN", "ADMIN", "MANAGER"]);
-    const { startOfDay } = nowInTimezone();
+    const { startOfDay } = nowInTimezone(await resolveTimezone(user));
 
     const records = await db.attendance.findMany({
       where: { attendanceDate: startOfDay, employee: { companyId: user.companyId } },

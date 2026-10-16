@@ -48,6 +48,11 @@ export async function POST(req: Request) {
     });
     if (!employee) throw ERRORS.NOT_FOUND("Employee not found");
 
+    // Check-in refuses an inactive employee; check-out did not, so a session
+    // opened while the account was still active could be closed after the
+    // employee was deactivated, and the finalised hours would still be counted.
+    if (employee.status !== "ACTIVE") throw ERRORS.EMPLOYEE_INACTIVE();
+
     // Find attendance
     const attendance = await db.attendance.findUnique({
       where: { id: attendanceId },

@@ -90,10 +90,54 @@ class ApiClient {
   }
 
   /// Performs a GET and returns the unwrapped `data` payload.
+  /// In-flight GETs, keyed by path plus query.
+  ///
+  /// Several screens ask for the same thing at the same time — a cold start
+  /// fires the badge count from two providers, and resume plus tab-select can
+  /// both reach for the dashboard. Each of those was a separate HTTP round trip
+  /// against a database where one costs ~0.3-0.5s, so collapsing identical
+  /// concurrent GETs into a single request is the cheapest speedup available.
+  final _inFlight = <String, Future<Map<String, dynamic>>>{};
+
+  static const _coalesceWindow = Duration(milliseconds: 800);
+
+  /// Key used to decide whether two GETs are the same request. Query order is
+  /// normalised so `{a:1,b:2}` and `{b:2,a:1}` collapse together.
+  static String _keyFor(String path, Map<String, dynamic>? query) {
+    if (query == null || query.isEmpty) return path;
+    final keys = query.keys.toList()..sort();
+    return '$path?${keys.map((k) => '$k=${query[k]}').join('&')}';
+  }
+
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
+    /// Bypass the in-flight map. Used where a caller genuinely needs a fresh
+    /// read even though an identical one is in flight.
+    bool fresh = false,
   }) async {
+    final key = _keyFor(path, query);
+
+    if (!fresh) {
+      final pending = _inFlight[key];
+      if (pending != null) return pending;
+    }
+
+    final request = _performGet(path, query);
+    _inFlight[key] = request;
+    try {
+      return await request;
+    } finally {
+      // Cleared as soon as it settles. Anything longer would serve a stale
+      // answer to a request made later.
+      if (identical(_inFlight[key], request)) _inFlight.remove(key);
+    }
+  }
+
+  Future<Map<String, dynamic>> _performGet(
+    String path,
+    Map<String, dynamic>? query,
+  ) async {
     await init();
     try {
       final res = await _dio.get<dynamic>(path, queryParameters: query);

@@ -3,12 +3,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../core/constants.dart';
+import '../core/project_preference.dart';
 import '../models/models.dart';
 import '../providers/attendance_provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/notification_provider.dart';
 import '../widgets/nas_mark.dart';
 import 'notifications_screen.dart';
+import 'check_in_camera_screen.dart';
 import 'project_selection_screen.dart';
 import 'working_session_screen.dart';
 
@@ -108,6 +110,65 @@ class _DashboardTabState extends State<DashboardTab> {
   }
 
   @override
+  /// Compact age label, e.g. "just now", "4m ago".
+  static String _ago(Duration? d) {
+    if (d == null) return 'just now';
+    final s = d.inSeconds;
+    if (s < 60) return 'just now';
+    if (s < 3600) return '${s ~/ 60}m ago';
+    if (s < 86400) return '${s ~/ 3600}h ago';
+    return '${s ~/ 86400}d ago';
+  }
+
+  /// Starts a check-in without asking the employee to choose a project, unless
+  /// there is genuine ambiguity.
+  ///
+  /// Three cases:
+  ///  - exactly one active assignment: obviously that one
+  ///  - several, but the last one used is still assigned: that one, with the
+  ///    project named on the button so the choice is visible and reversible
+  ///  - otherwise: the picker
+  ///
+  /// Choosing wrongly is recoverable — the geofence pre-check and the server's
+  /// assignment check both reject a project the employee is not assigned to — so
+  /// a wrong guess costs one tap, not a wrong attendance record.
+  Future<void> _startCheckIn(BuildContext context, List<Project> projects) async {
+    if (projects.length == 1) {
+      await _checkInTo(context, projects.first);
+      return;
+    }
+
+    final lastId = await ProjectPreference.instance.lastProjectId();
+    final remembered = projects.where((p) => p.id == lastId).toList();
+    if (remembered.length == 1) {
+      await _checkInTo(context, remembered.first);
+      return;
+    }
+
+    if (!context.mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => ProjectSelectionScreen(projects: projects)),
+    );
+  }
+
+  Future<void> _checkInTo(BuildContext context, Project project) async {
+    await ProjectPreference.instance.setLastProjectId(project.id);
+    if (!context.mounted) return;
+    final checkedIn = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => CheckInCameraScreen(project: project)),
+    );
+    // Unwind to the dashboard so it refreshes into the working state. Bypasses
+    // the cache: a cached "Not Checked In" after a successful check-in would be
+    // exactly the wrong thing to show.
+    if (!context.mounted) return;
+    if (checkedIn == true) {
+      await context.read<AttendanceProvider>().loadDashboard(allowCache: false);
+    }
+  }
+
+
   Widget build(BuildContext context) {
     final att = context.watch<AttendanceProvider>();
     final auth = context.watch<AuthProvider>();
@@ -211,6 +272,30 @@ class _DashboardTabState extends State<DashboardTab> {
                       children: [
                         const SizedBox(height: 8),
 
+                        // Only shown while the visible data is a device-cache
+                        // copy. Silently rendering a cached "Not Checked In" as
+                        // though it were live is exactly the failure mode this
+                        // cache exists to avoid, so the age is always stated.
+                        if (att.isShowingCachedDashboard)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: Row(
+                              children: [
+                                const SizedBox(
+                                  width: 11,
+                                  height: 11,
+                                  child: CircularProgressIndicator(strokeWidth: 1.6),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Updating — showing your last known data (${_ago(att.dashboardAge)})',
+                                  style: const TextStyle(
+                                      fontSize: 11, color: AppColors.textMuted),
+                                ),
+                              ],
+                            ),
+                          ),
+
                         // Profile card
                         _ProfileCard(
                           name: dashboard?.employeeName ?? auth.user?.name ?? 'User',
@@ -255,9 +340,8 @@ class _DashboardTabState extends State<DashboardTab> {
                             text: isCheckedOut ? 'CHECK IN AGAIN' : 'CHECK IN',
                             color: AppColors.success,
                             icon: Icons.play_arrow,
-                            onPressed: () => Navigator.push(context, MaterialPageRoute(
-                              builder: (_) => ProjectSelectionScreen(projects: dashboard.projects),
-                            )),
+                            onPressed: () =>
+                                _startCheckIn(context, dashboard.projects),
                           )
                         else if (isCheckedOut)
                           Container(

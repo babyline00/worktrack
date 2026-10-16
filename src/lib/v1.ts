@@ -38,6 +38,15 @@ export interface JwtPayload {
   role: string;
   companyId?: string;
   employeeId?: string;
+  /**
+   * The tenant's IANA timezone, carried on the token so every request can
+   * resolve "today" correctly without an extra query for the company row.
+   *
+   * Optional because tokens minted before this field existed are still valid for
+   * up to 15 minutes after deploy; readers must fall back to a company lookup
+   * rather than assume it is present.
+   */
+  timezone?: string;
   type: "access" | "refresh";
   iat: number;
   exp: number;
@@ -310,11 +319,118 @@ export async function auditLog(params: {
 // Time helpers — store UTC, format with timezone
 // ============================================================
 
+/**
+ * The UTC offset of `timeZone` at `date`, in milliseconds.
+ *
+ * Positive east of Greenwich. Computed by reading the wall-clock time in the
+ * zone and comparing it to UTC, which is the only way to get DST right — a
+ * fixed offset would be wrong for half the year in any zone that observes it.
+ */
+function timezoneOffsetMs(date: Date, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour12: false,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).formatToParts(date);
+
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "0";
+  // `hour12: false` yields "24" for midnight in some ICU versions; % 24 folds it
+  // back to 00 so the UTC reconstruction below is not off by a day.
+  const asUtc = Date.UTC(
+    Number(get("year")),
+    Number(get("month")) - 1,
+    Number(get("day")),
+    Number(get("hour")) % 24,
+    Number(get("minute")),
+    Number(get("second")),
+  );
+  return asUtc - date.getTime();
+}
+
+/**
+ * The UTC instant of midnight starting the day that `at` falls on in `timeZone`.
+ *
+ * This is deliberately not `new Date(at).setHours(0,0,0,0)`, which silently uses
+ * the *server's* zone. Vercel runs UTC, so for a Karachi company every session
+ * between 00:00 and 05:00 UTC was being filed under the previous day — which is
+ * exactly the five hours right after the shift that the midnight crew works.
+ */
+export function startOfDayInTimezone(timeZone: string, at: Date = new Date()): Date {
+  const localDate = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(at); // YYYY-MM-DD
+
+  const [y, m, d] = localDate.split("-").map(Number);
+  const wallClockUtc = Date.UTC(y, m - 1, d, 0, 0, 0, 0);
+
+  // One pass is enough except within a few ms of a DST jump, where the first
+  // guess lands on the wrong side of the transition; a second pass settles it.
+  let ts = wallClockUtc - timezoneOffsetMs(new Date(wallClockUtc), timeZone);
+  ts = wallClockUtc - timezoneOffsetMs(new Date(ts), timeZone);
+  return new Date(ts);
+}
+
+/**
+ * The UTC instant of a "HH:mm" wall-clock time on the day `at` falls on in
+ * `timeZone`. Used to place a shift's scheduled end on a real date.
+ */
+export function wallClockInTimezone(timeZone: string, hhmm: string, at: Date): Date {
+  const dayStart = startOfDayInTimezone(timeZone, at);
+  const [h, m] = hhmm.split(":").map(Number);
+  const target = dayStart.getTime() + (h * 60 + m) * 60_000;
+  // Same two-pass correction as above for DST boundary days.
+  let ts = target - timezoneOffsetMs(new Date(target), timeZone);
+  ts = target - timezoneOffsetMs(new Date(ts), timeZone);
+  return new Date(ts);
+}
+
+/**
+ * A calendar date as `YYYY-MM-DD` in the tenant's timezone.
+ *
+ * `attendanceDate` is midnight *in the company's timezone* stored as a UTC
+ * instant, so for Karachi that is 19:00 UTC the previous evening. Slicing the
+ * ISO string — `date.toISOString().split("T")[0]` — therefore labels every
+ * session a day early, which is what the history screen showed.
+ */
+export function formatDateInTimezone(date: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
 export function nowInTimezone(timezone = "Asia/Karachi"): { date: Date; startOfDay: Date } {
   const now = new Date();
-  const startOfDay = new Date(now);
-  startOfDay.setHours(0, 0, 0, 0);
-  return { date: now, startOfDay };
+  return { date: now, startOfDay: startOfDayInTimezone(timezone, now) };
+}
+
+/**
+ * The tenant's timezone for an authenticated request.
+ *
+ * Reads it off the token, which costs nothing. Tokens minted before the field
+ * existed fall back to one company lookup — a 15-minute window after deploy,
+ * paid once per session rather than once per request.
+ */
+export async function resolveTimezone(
+  user: Pick<JwtPayload, "timezone" | "companyId">
+): Promise<string> {
+  if (user.timezone) return user.timezone;
+  if (!user.companyId) return "Asia/Karachi";
+  const company = await db.company.findUnique({
+    where: { id: user.companyId },
+    select: { timezone: true },
+  });
+  return company?.timezone || "Asia/Karachi";
 }
 
 export function formatTimeInTimezone(date: Date | null, timezone = "Asia/Karachi"): string | null {
@@ -332,6 +448,152 @@ export function formatMins(mins: number): string {
   const h = Math.floor(mins / 60);
   const m = mins % 60;
   return h > 0 ? `${h}h ${m.toString().padStart(2, "0")}m` : `${m}m`;
+}
+
+// ============================================================
+// Stale attendance sessions
+// ============================================================
+
+/**
+ * Ceiling on time credited to a session closed without the employee.
+ *
+ * Without this, a forgotten session left open over a long weekend would be
+ * settled at check-out time and hand the employee days of paid work they never
+ * did. Twelve hours is the longest plausible single stretch; anything beyond is
+ * a guess, and a guess should not become a payslip.
+ */
+const MAX_UNATTENDED_SESSION_MINS = 12 * 60;
+
+/**
+ * Closes attendance sessions left open from a previous day.
+ *
+ * This exists because of a genuine deadlock. `check-in` refuses when *any*
+ * unclosed session exists for the employee, but `today` and the dashboard only
+ * ever look at today's sessions. So a session left open when the app was closed
+ * — a crash, a flat battery, a flight — produced this: the dashboard said
+ * "Not Checked In", offered a CHECK IN button, and that button could only ever
+ * fail with ALREADY_CHECKED_IN. Because `today` never returned the stale
+ * session's id, the app had no CHECK OUT button either. The employee was locked
+ * out of attendance until someone fixed the row by hand in the database.
+ *
+ * Nobody is still working a shift from yesterday, so a session older than today
+ * is closed rather than left to block. It is closed at the shift's scheduled end
+ * where one is known, and flagged FLAGGED either way, so a supervisor reviews it
+ * instead of it silently becoming a number.
+ *
+ * Deliberately does *not* touch a session opened today: that one may genuinely
+ * be live, and the geofence auto-checkout in /mobile/location owns closing it.
+ */
+export async function closeStaleSessions(opts: {
+  employeeId: string;
+  companyId: string;
+  timezone: string;
+}): Promise<{ closed: string[] }> {
+  const { startOfDay } = nowInTimezone(opts.timezone);
+
+  const stale = await db.attendance.findMany({
+    where: {
+      employeeId: opts.employeeId,
+      checkIn: { not: null },
+      checkOut: null,
+      attendanceDate: { lt: startOfDay },
+    },
+    include: { project: true },
+  });
+
+  if (stale.length === 0) return { closed: [] };
+
+  const closed: string[] = [];
+  const now = new Date();
+
+  // `Attendance.shiftId` is a bare column with no Prisma relation, and the
+  // employee's `User` is only reachable through the reverse side of the
+  // relation. Both are fetched up front rather than per session.
+  const shiftIds = [...new Set(stale.map((s) => s.shiftId).filter((id): id is string => !!id))];
+  const shifts = shiftIds.length
+    ? await db.shift.findMany({ where: { id: { in: shiftIds } } })
+    : [];
+  const shiftById = new Map(shifts.map((s) => [s.id, s]));
+
+  const employee = await db.employee.findUnique({
+    where: { id: opts.employeeId },
+    include: { user: { select: { id: true } } },
+  });
+  const userId = employee?.user?.id ?? null;
+
+  for (const session of stale) {
+    if (!session.checkIn) continue;
+    const shift = session.shiftId ? shiftById.get(session.shiftId) : undefined;
+
+    // Best available estimate of when the employee actually left.
+    let checkOut = now;
+    let basis = `there being no scheduled end time for this session, so the ` +
+      `maximum plausible ${MAX_UNATTENDED_SESSION_MINS / 60}h shift was assumed`;
+    if (shift?.endTime) {
+      const scheduled = wallClockInTimezone(opts.timezone, shift.endTime, session.checkIn);
+      // Only trust the schedule if it lands after the check-in. A shift that
+      // ends before it starts (an overnight shift stored as "06:00"–"22:00"
+      // read the other way round, say) would otherwise produce negative hours.
+      if (scheduled.getTime() > session.checkIn.getTime()) {
+        checkOut = scheduled;
+        basis = `the "${shift.name}" shift's scheduled end (${shift.endTime})`;
+      }
+    }
+
+    const rawMins = Math.max(0, Math.round((checkOut.getTime() - session.checkIn.getTime()) / 60_000));
+    const workingMins = Math.min(rawMins, MAX_UNATTENDED_SESSION_MINS);
+    const capped = workingMins < rawMins;
+
+    // Keep the stored timestamp consistent with the credited time. Leaving
+    // checkOut at "now" while crediting 12h produced a record that claimed the
+    // employee checked out five days after they clocked in, which is worse than
+    // useless in a report. When there is nothing to go on, the session is closed
+    // at check-in plus the cap, so the two numbers tell the same story.
+    if (capped) {
+      checkOut = new Date(session.checkIn.getTime() + MAX_UNATTENDED_SESSION_MINS * 60_000);
+    }
+
+    await db.attendance.update({
+      where: { id: session.id },
+      data: {
+        checkOut,
+        checkOutServerReceivedAt: now,
+        checkOutDeviceId: "AUTO_STALE_SESSION",
+        workingMins,
+        sessionStatus: "COMPLETED",
+        verificationStatus: "FLAGGED",
+        notes:
+          `Closed automatically on ${formatDate(checkOut)}. The app was not used ` +
+          `after check-in, so no check-out time or photo was ever captured; the ` +
+          `recorded end is based on ${basis}` +
+          (capped
+            ? `, capped at ${MAX_UNATTENDED_SESSION_MINS / 60}h because the ` +
+              `unattended gap was longer than a single plausible shift.`
+            : ".") +
+          ` Please review.`,
+      },
+    });
+
+    await db.notification.create({
+      data: {
+        // Addressed to this employee only. A company broadcast would tell every
+        // colleague about one person's forgotten check-out.
+        userId,
+        companyId: opts.companyId,
+        type: "ALERT",
+        title: "Attendance session closed automatically",
+        description:
+          `Your ${formatDate(session.checkIn)} session at ` +
+          `${session.project?.name ?? "a project"} was never checked out, so it ` +
+          `was closed automatically and flagged for review. Please confirm it ` +
+          `with your supervisor.`,
+      },
+    });
+
+    closed.push(session.id);
+  }
+
+  return { closed };
 }
 
 // ============================================================

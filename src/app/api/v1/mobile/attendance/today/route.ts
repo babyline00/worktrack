@@ -7,6 +7,7 @@ import {
   ERRORS,
   formatTimeInTimezone,
   nowInTimezone,
+  closeStaleSessions,
 } from "@/lib/v1";
 
 export const runtime = "nodejs";
@@ -17,12 +18,24 @@ export async function GET(req: Request) {
     const user = await requireAuth(req);
     if (!user.employeeId) throw ERRORS.FORBIDDEN();
 
-    const { startOfDay } = nowInTimezone();
     const emp = await db.employee.findUnique({
       where: { id: user.employeeId },
       include: { company: true },
     });
     if (!emp) throw ERRORS.NOT_FOUND("Employee not found");
+
+    // Retire any session left open on a previous day *before* reading today.
+    // Without this the dashboard reported "Not Checked In" while `check-in`
+    // refused with ALREADY_CHECKED_IN, and — because this endpoint is what
+    // supplies the CHECK OUT button — there was no way to clear the blocker
+    // from the app at all.
+    await closeStaleSessions({
+      employeeId: emp.id,
+      companyId: emp.companyId,
+      timezone: emp.company.timezone,
+    });
+
+    const { startOfDay } = nowInTimezone(emp.company.timezone);
 
     // All of today's sessions. More than one is normal — employees may work
     // split shifts — so the day's totals are aggregated rather than read off

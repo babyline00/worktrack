@@ -6,6 +6,7 @@ import {
   ApiError,
   ERRORS,
   nowInTimezone,
+  resolveTimezone,
 } from "@/lib/v1";
 
 export const runtime = "nodejs";
@@ -17,7 +18,7 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const date = url.searchParams.get("date");
     const projectId = url.searchParams.get("projectId");
-    const { startOfDay } = nowInTimezone();
+    const { startOfDay } = nowInTimezone(await resolveTimezone(user));
     const targetDate = date ? new Date(date) : startOfDay;
     targetDate.setHours(0, 0, 0, 0);
 
