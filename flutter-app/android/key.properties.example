@@ -1,0 +1,15 @@
+# Copy to key.properties and fill in. key.properties itself is gitignored.
+#
+# Generate a keystore with:
+#   keytool -genkeypair -v -keystore app/<name>.jks -storetype JKS \
+#           -keyalg RSA -keysize 2048 -validity 10000 \
+#           -alias <alias> -storepass <pass> -keypass <pass> \
+#           -dname "CN=<org>, O=<org>, C=<country>"
+#
+# Back up BOTH this file and the keystore somewhere outside git. Losing them
+# means no future release can update an already-installed app — Android refuses
+# an update signed by a different key.
+storePassword=
+keyPassword=
+keyAlias=
+storeFile=
