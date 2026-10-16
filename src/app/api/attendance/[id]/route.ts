@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { requireCompanyRole, CONFIG_WRITE_ROLES } from "@/lib/api-auth";
 import { db } from "@/lib/db";
 import { auditLog } from "@/lib/v1";
 
@@ -26,11 +25,10 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    const companyId = (session.user as any).companyId;
+    // Role-checked: a manual adjustment rewrites recorded hours, which is pay.
+    const auth = await requireCompanyRole(CONFIG_WRITE_ROLES);
+    if ("error" in auth) return auth.error;
+    const { companyId } = auth;
 
     const body = await req.json().catch(() => ({}));
     const reason = String(body.reason ?? "").trim();
@@ -112,7 +110,7 @@ export async function PATCH(
       entity: "Attendance",
       entityId: id,
       companyId,
-      performedById: (session.user as any).id,
+      performedById: auth.userId,
       oldValue,
       newValue: {
         checkIn: updated.checkIn?.toISOString() ?? null,

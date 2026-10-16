@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { requireCompanyRole, CONFIG_WRITE_ROLES } from "@/lib/api-auth";
 import { db } from "@/lib/db";
 
 // Session-authenticated department list for the admin employee dialog, which
@@ -28,9 +29,10 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const companyId = (session.user as any).companyId as string;
+  // Role-checked: departments drive the org chart and reporting groupings.
+  const auth = await requireCompanyRole(CONFIG_WRITE_ROLES);
+  if ("error" in auth) return auth.error;
+  const { companyId } = auth;
 
   const body = await req.json();
   const name = String(body.name ?? "").trim();

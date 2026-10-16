@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { authedCompany, requireCompanyRole, CONFIG_WRITE_ROLES } from "@/lib/api-auth";
 import { db } from "@/lib/db";
 import { normalizeShiftTime } from "@/lib/v1";
 import type { Prisma } from "@prisma/client";
@@ -83,13 +82,6 @@ function validate(body: Record<string, unknown>) {
   };
 }
 
-async function authedCompany() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user) {
-    return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
-  }
-  return { companyId: (session.user as any).companyId as string };
-}
 
 export async function GET() {
   const auth = await authedCompany();
@@ -102,7 +94,8 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const auth = await authedCompany();
+  // Role-checked: creating a shift changes the hours every late calculation uses.
+  const auth = await requireCompanyRole(CONFIG_WRITE_ROLES);
   if ("error" in auth) return auth.error;
 
   const body = await req.json();
@@ -117,7 +110,8 @@ export async function POST(req: Request) {
 
 /** PATCH /api/shifts — partial update; omitted fields keep their value. */
 export async function PATCH(req: Request) {
-  const auth = await authedCompany();
+  // Role-checked: editing a shift rewrites the hours already recorded against it.
+  const auth = await requireCompanyRole(CONFIG_WRITE_ROLES);
   if ("error" in auth) return auth.error;
 
   const body = await req.json();
@@ -147,7 +141,8 @@ export async function PATCH(req: Request) {
 }
 
 export async function DELETE(req: Request) {
-  const auth = await authedCompany();
+  // Role-checked: deleting a shift orphans the sessions that referenced it.
+  const auth = await requireCompanyRole(CONFIG_WRITE_ROLES);
   if ("error" in auth) return auth.error;
 
   const id = new URL(req.url).searchParams.get("id") ?? "";

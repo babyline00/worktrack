@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { startOfDayInTimezone } from "@/lib/v1";
 
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
@@ -19,17 +20,25 @@ export async function GET(req: Request) {
     where.employeeId = employeeId;
     // No date filter — get all history
   } else {
-    // attendanceDate is a day marker, but not always stored at midnight — the
-    // writers call setHours(0,0,0,0) in the server's local zone, so the stored
-    // value can land at 04:00 and an exact-equality filter then matches
-    // nothing, which is why this page showed "No attendance records" on days
-    // full of them. Match the whole day as a range instead.
-    const day = dateStr ? new Date(`${dateStr}T00:00:00`) : new Date();
-    const dayStart = new Date(day.getFullYear(), day.getMonth(), day.getDate());
+    // attendanceDate is midnight *in the tenant's timezone*, stored as a
+    // UTC instant. For a Karachi company that is 19:00 UTC the previous
+    // evening, so using UTC midnight as the filter start dropped every
+    // session of the company's "today" — which is why the admin Attendance
+    // page looked empty while the live session count showed working staff.
+    //
+    // The date picker hands us a `YYYY-MM-DD` in the tenant's local calendar,
+    // so build the bounds from that calendar rather than interpreting them as
+    // UTC or server-local time.
+    const company = await db.company.findUnique({
+      where: { id: companyId },
+      select: { timezone: true },
+    });
+    const tz = company?.timezone ?? "Asia/Karachi";
+    const anchor = dateStr ? new Date(`${dateStr}T12:00:00Z`) : new Date();
+    const dayStart = startOfDayInTimezone(tz, anchor);
     const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
     where.attendanceDate = { gte: dayStart, lt: dayEnd };
   }
-
   const limitParam = Number(url.searchParams.get("limit"));
   const limit = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(limitParam, 500) : undefined;
 

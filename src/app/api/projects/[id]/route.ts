@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { authedCompany, requireCompanyRole, CONFIG_WRITE_ROLES } from "@/lib/api-auth";
 import { db } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
 
@@ -23,14 +22,11 @@ function toNullableText(value: unknown): string | null {
   return text === "" ? null : text;
 }
 
-async function authedCompany() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user) return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
-  return { companyId: (session.user as any).companyId as string };
-}
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await authedCompany();
+  // Role-checked: editing a project changes the geofence, the radius and the
+  // shift assignment every employee on that site is validated against.
+  const auth = await requireCompanyRole(CONFIG_WRITE_ROLES);
   if ("error" in auth) return auth.error;
   const { companyId } = auth;
 
@@ -108,7 +104,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 }
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await authedCompany();
+  const auth = await requireCompanyRole(CONFIG_WRITE_ROLES);
   if ("error" in auth) return auth.error;
 
   const id = (await params).id;

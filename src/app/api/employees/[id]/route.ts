@@ -1,20 +1,22 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { requireCompanyRole, CONFIG_WRITE_ROLES } from "@/lib/api-auth";
 import { db } from "@/lib/db";
 import { writeFileSync, mkdirSync, unlinkSync, existsSync } from "fs";
 import { join } from "path";
 
 // PATCH /api/employees/:id — update employee fields + optional password reset
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // Role-checked: changing or removing an employee changes who can sign in and
+  // what they are paid.
+  const auth = await requireCompanyRole(CONFIG_WRITE_ROLES);
+  if ("error" in auth) return auth.error;
+  const { companyId } = auth;
   const { id } = await params;
   const body = await req.json();
 
   // Verify employee belongs to admin's company
   const emp = await db.employee.findUnique({ where: { id }, include: { user: true } });
-  if (!emp || emp.companyId !== (session.user as any).companyId) {
+  if (!emp || emp.companyId !== companyId) {
     return NextResponse.json({ error: "Employee not found" }, { status: 404 });
   }
 
@@ -90,12 +92,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
 // DELETE /api/employees/:id — PERMANENT delete with ALL related records
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // Role-checked: changing or removing an employee changes who can sign in and
+  // what they are paid.
+  const auth = await requireCompanyRole(CONFIG_WRITE_ROLES);
+  if ("error" in auth) return auth.error;
+  const { companyId } = auth;
   const { id } = await params;
 
   const emp = await db.employee.findUnique({ where: { id } });
-  if (!emp || emp.companyId !== (session.user as any).companyId) {
+  if (!emp || emp.companyId !== companyId) {
     return NextResponse.json({ error: "Employee not found" }, { status: 404 });
   }
 

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { requireCompanyRole, CONFIG_WRITE_ROLES } from "@/lib/api-auth";
 import { db } from "@/lib/db";
 
 export async function GET() {
@@ -14,9 +15,10 @@ export async function GET() {
 }
 
 export async function PATCH(req: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const companyId = (session.user as any).companyId;
+  // Role-checked: company settings gate geofencing, GPS accuracy and leave policy for everyone.
+  const auth = await requireCompanyRole(CONFIG_WRITE_ROLES);
+  if ("error" in auth) return auth.error;
+  const { companyId } = auth;
   const body = await req.json(); // { key: value, ... }
 
   const ops = Object.entries(body).map(([key, value]) =>

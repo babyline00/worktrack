@@ -23,7 +23,10 @@ export class Cache {
     if (redisUrl) {
       try {
         // Dynamic import to avoid dependency if not used
-        const { createClient } = await import("redis");
+        const moduleName = "redis";
+          const loaded = await import(moduleName) as any;
+          const createClient = loaded?.createClient;
+          if (!createClient) throw new Error("redis not installed");
         this.redis = createClient({ url: redisUrl });
         this.redis.on("error", (err: any) => console.error("[Redis] error:", err));
         await this.redis.connect();

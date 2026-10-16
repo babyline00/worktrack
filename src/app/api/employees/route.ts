@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { requireCompanyRole, CONFIG_WRITE_ROLES } from "@/lib/api-auth";
 import { db } from "@/lib/db";
 import { haversineMeters } from "@/lib/v1";
 
@@ -189,9 +190,10 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const companyId = (session.user as any).companyId;
+  // Role-checked: creating or changing an employee changes who can sign in and what they are paid.
+  const auth = await requireCompanyRole(CONFIG_WRITE_ROLES);
+  if ("error" in auth) return auth.error;
+  const { companyId } = auth;
   const body = await req.json();
 
   // Check empId unique within company

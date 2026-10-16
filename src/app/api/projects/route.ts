@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { requireCompanyRole, CONFIG_WRITE_ROLES, authedCompany } from "@/lib/api-auth";
 import { db } from "@/lib/db";
 
 /** Sentinel radius meaning "no geofence limit". */
@@ -35,9 +34,10 @@ function toNullableText(value: unknown): string | null {
 }
 
 export async function GET() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const companyId = (session.user as any).companyId as string;
+  // Read-scoped: employees need the project list to check in against it.
+  const auth = await authedCompany();
+  if ("error" in auth) return auth.error;
+  const { companyId } = auth;
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -86,9 +86,11 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const companyId = (session.user as any).companyId as string;
+  // Role-checked: creating a project also creates the geofence every check-in
+  // on that site is validated against.
+  const auth = await requireCompanyRole(CONFIG_WRITE_ROLES);
+  if ("error" in auth) return auth.error;
+  const { companyId } = auth;
   const body = await req.json();
 
   const name = String(body.name ?? "").trim();
