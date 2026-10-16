@@ -14,7 +14,6 @@ import {
   LifeBuoy,
   Bell,
   MoreVertical,
-  Code2,
 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useEmployees, useLeaveRequests } from "@/lib/hooks";
@@ -44,10 +43,7 @@ const NAV: {
     ],
   },
   {
-    items: [
-      { key: "reports", label: "Reports", icon: FileBarChart },
-      { key: "api-docs", label: "API Docs", icon: Code2 },
-    ],
+    items: [{ key: "reports", label: "Reports", icon: FileBarChart }],
   },
 ];
 

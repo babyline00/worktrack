@@ -4,6 +4,9 @@ import { useMemo, useState } from "react";
 import { Download, Search, MapPin, X, Calendar as CalIcon, Eye, Pencil, User as UserIcon } from "lucide-react";
 import { useAttendance, useEmployeeByEmpId, useEmployees } from "@/lib/hooks";
 import { AdjustAttendanceDialog } from "@/components/worktrack/adjust-attendance-dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AttendanceMonthly } from "./attendance-monthly";
+import { SalaryCalculator } from "./salary-calculator";
 import { useApp } from "@/lib/store";
 import {
   Avatar,
@@ -33,6 +36,10 @@ import { toast } from "sonner";
 
 export function AttendancePage() {
   const { attendanceDetailId, setAttendanceDetail, setPage } = useApp();
+  // Monthly records and the salary calculator live here rather than under
+  // Reports, so attendance, its monthly rollup and its pay calculation sit
+  // on one screen and reconcile against each other.
+  const [tab, setTab] = useState("daily");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const { data, isLoading } = useAttendance(date);
   const { data: empData } = useEmployees();
@@ -113,6 +120,14 @@ export function AttendancePage() {
         }
       />
 
+      <Tabs value={tab} onValueChange={setTab}>
+        <TabsList>
+          <TabsTrigger value="daily">Daily</TabsTrigger>
+          <TabsTrigger value="monthly">Monthly records</TabsTrigger>
+          <TabsTrigger value="salary">Salary calculator</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="daily">
       <Card className="p-3">
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative min-w-[200px] flex-1">
@@ -224,6 +239,17 @@ export function AttendancePage() {
           </div>
         </Card>
       )}
+
+        </TabsContent>
+
+        <TabsContent value="monthly">
+          <AttendanceMonthly />
+        </TabsContent>
+
+        <TabsContent value="salary">
+          <SalaryCalculator />
+        </TabsContent>
+      </Tabs>
 
       <Sheet open={!!detail} onOpenChange={(o) => !o && setAttendanceDetail(null)}>
         <SheetContent className="scroll-thin w-full overflow-y-auto sm:max-w-md">

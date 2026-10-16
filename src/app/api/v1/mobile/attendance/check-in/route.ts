@@ -11,6 +11,8 @@ import {
   storeIdempotency,
   nowInTimezone,
   closeStaleSessions,
+  maxWorkingCapInstant,
+  autoCloseAtMaxHours,
   formatTimeInTimezone,
 } from "@/lib/v1";
 import { emitCheckin } from "@/lib/realtime-server";
@@ -96,13 +98,34 @@ export async function POST(req: Request) {
     });
 
     const { startOfDay } = nowInTimezone(employee.company.timezone);
-    const openSession = await db.attendance.findFirst({
+    let openSession = await db.attendance.findFirst({
       where: {
         employeeId: employee.id,
         checkIn: { not: null },
         checkOut: null,
       },
+      include: { project: { select: { name: true } } },
     });
+
+    // Maximum working time, applied to a session that outlived its cap. The
+    // employee is asking to start a new shift; making them hand-close an
+    // eight-hour overrun first would be odd to insist on, and the same rule
+    // already runs during tracking and on every dashboard read.
+    if (openSession?.checkIn) {
+      const capAt = maxWorkingCapInstant(openSession.checkIn);
+      if (capAt) {
+        await autoCloseAtMaxHours({
+          attendanceId: openSession.id,
+          checkIn: openSession.checkIn,
+          capAt,
+          employeeId: employee.id,
+          companyId: employee.companyId,
+          projectName: openSession.project?.name,
+        });
+        openSession = null; // it is closed now, so it no longer blocks
+      }
+    }
+
     if (openSession) throw ERRORS.ALREADY_CHECKED_IN();
 
     // 6. GPS accuracy (use company setting)

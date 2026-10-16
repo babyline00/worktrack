@@ -1,5 +1,14 @@
 import { db } from "@/lib/db";
-import { requireRole, apiSuccess, apiError, ApiError, ERRORS } from "@/lib/v1";
+import {
+  requireRole,
+  apiSuccess,
+  apiError,
+  ApiError,
+  ERRORS,
+  resolveTimezone,
+  startOfDayInTimezone,
+  formatDateInTimezone,
+} from "@/lib/v1";
 
 export const runtime = "nodejs";
 
@@ -8,17 +17,22 @@ export async function GET(req: Request) {
   try {
     const user = await requireRole(req, ["SUPER_ADMIN", "ADMIN", "MANAGER"]);
     const url = new URL(req.url);
+    const timezone = await resolveTimezone(user);
     const monthParam = url.searchParams.get("month"); // "2026-10"
     const projectId = url.searchParams.get("projectId");
 
+    // Bounds come from the tenant's calendar. `new Date(year, month, 1)` is the
+    // *server's* zone, which runs UTC on Vercel — that put the start of the
+    // month five hours late and the end five hours early for a Karachi company,
+    // quietly dropping the first and last shifts of every month.
     const now = new Date();
     const year = monthParam ? parseInt(monthParam.split("-")[0]) : now.getFullYear();
     const month = monthParam ? parseInt(monthParam.split("-")[1]) - 1 : now.getMonth();
-    const from = new Date(year, month, 1);
-    const to = new Date(year, month + 1, 0, 23, 59, 59, 999);
+    const from = startOfDayInTimezone(timezone, new Date(Date.UTC(year, month, 1, 12)));
+    const to = startOfDayInTimezone(timezone, new Date(Date.UTC(year, month + 1, 1, 12)));
 
     const where: any = {
-      attendanceDate: { gte: from, lte: to },
+      attendanceDate: { gte: from, lt: to },
       employee: { companyId: user.companyId },
     };
     if (projectId) where.projectId = projectId;
@@ -51,7 +65,7 @@ export async function GET(req: Request) {
       if (r.attendanceStatus === "LATE") e.late++;
       e.totalMins += r.workingMins;
       e.records.push({
-        date: r.attendanceDate.toISOString().split("T")[0],
+        date: formatDateInTimezone(r.attendanceDate, timezone),
         checkIn: r.checkIn?.toISOString() ?? null,
         checkOut: r.checkOut?.toISOString() ?? null,
         workingMinutes: r.workingMins,

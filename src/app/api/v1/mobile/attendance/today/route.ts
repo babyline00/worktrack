@@ -8,6 +8,8 @@ import {
   formatTimeInTimezone,
   nowInTimezone,
   closeStaleSessions,
+  maxWorkingCapInstant,
+  autoCloseAtMaxHours,
 } from "@/lib/v1";
 
 export const runtime = "nodejs";
@@ -64,6 +66,36 @@ export async function GET(req: Request) {
     const openSession = todaysSessions.find(
       (s) => s.checkIn && !s.checkOut,
     );
+
+    // Maximum working time. Checked here as well as during tracking, because
+    // tracking only runs while the app is open — an employee who closes it and
+    // reopens the next morning would otherwise be told they are still working.
+    // The session is already loaded, so this costs no extra query.
+    if (openSession?.checkIn) {
+      const capAt = maxWorkingCapInstant(openSession.checkIn);
+      if (capAt) {
+        await autoCloseAtMaxHours({
+          attendanceId: openSession.id,
+          checkIn: openSession.checkIn,
+          capAt,
+          employeeId: emp.id,
+          companyId: emp.companyId,
+          projectName: openSession.project?.name,
+        });
+        return apiSuccess({
+          status: "COMPLETED",
+          attendance: null,
+          totalWorkingMinutes: Math.max(0, capAt.getTime() - openSession.checkIn.getTime()) / 60000,
+          sessionCount: todaysSessions.length,
+          autoCheckedOut: true,
+          autoCheckoutReason: "MAX_WORKING_HOURS",
+          // Same field /mobile/location returns, so the app can show the moment
+          // the session was closed rather than only that it was.
+          sessionClosedAt: capAt.toISOString(),
+        });
+      }
+    }
+
     const att = openSession ?? todaysSessions[0];
 
     const closedMinutes = todaysSessions

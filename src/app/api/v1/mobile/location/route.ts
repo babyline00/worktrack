@@ -6,6 +6,8 @@ import {
   ApiError,
   ERRORS,
   haversineMeters,
+  maxWorkingCapInstant,
+  autoCloseAtMaxHours,
 } from "@/lib/v1";
 
 export const runtime = "nodejs";
@@ -153,6 +155,33 @@ export async function POST(req: Request) {
     if (att.employeeId !== user.employeeId) throw ERRORS.FORBIDDEN();
     if (att.sessionStatus !== "WORKING") {
       throw new ApiError("NOT_WORKING", "Location updates only allowed during an active work session.", 400);
+    }
+
+    // Maximum working time, checked before anything else is written.
+    //
+    // Tracking pings arrive every few seconds, so this is the path that reliably
+    // notices an overrun — but it only runs while the app is open. The same rule
+    // is enforced in /today, /dashboard and check-in for when it is not.
+    const capAt = maxWorkingCapInstant(att.checkIn);
+    if (capAt) {
+      const emp = await db.employee.findUnique({
+        where: { id: user.employeeId },
+        select: { user: { select: { id: true } } },
+      });
+      await autoCloseAtMaxHours({
+        attendanceId: att.id,
+        checkIn: att.checkIn!,
+        capAt,
+        employeeId: user.employeeId,
+        companyId: user.companyId,
+        userId: emp?.user?.id ?? null,
+        projectName: att.project?.name,
+      });
+      return apiSuccess({
+        autoCheckedOut: true,
+        autoCheckoutReason: "MAX_WORKING_HOURS",
+        sessionClosedAt: capAt.toISOString(),
+      });
     }
 
     // Calculate geofence status

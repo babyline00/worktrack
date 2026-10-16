@@ -455,6 +455,94 @@ export function formatMins(mins: number): string {
 // ============================================================
 
 /**
+ * Hard ceiling on a single working session, in hours.
+ *
+ * This is payroll protection, not a convenience. A forgotten check-out would
+ * otherwise keep accruing paid hours until something else closed it — and
+ * `closeStaleSessions` only does that once the date rolls over, so an employee
+ * could bank a full extra day's pay by never pressing the button. Eight hours
+ * matches a normal shift; anything longer is an anomaly a supervisor should see
+ * rather than silently pay for.
+ *
+ * Deliberately a constant rather than a per-company setting: a site that
+ * genuinely runs 12-hour shifts should say so, not have the default quietly
+ * over-credit everyone.
+ */
+export const MAX_WORKING_HOURS_HARD_CAP = 8;
+
+/**
+ * The instant a session that started at `checkIn` has hit the cap, or null if it
+ * has not.
+ *
+ * Pure and clock-injectable so the rule can be exercised without waiting eight
+ * hours, and so every call site enforces it identically.
+ */
+export function maxWorkingCapInstant(
+  checkIn: Date | null,
+  now: Date = new Date(),
+  capHours: number = MAX_WORKING_HOURS_HARD_CAP,
+): Date | null {
+  if (!checkIn) return null;
+  const capAt = new Date(checkIn.getTime() + capHours * 3_600_000);
+  return now.getTime() >= capAt.getTime() ? capAt : null;
+}
+
+/**
+ * Closes a session that has overrun the hard cap.
+ *
+ * Called by whichever endpoint already holds the open session, so enforcing the
+ * cap costs no extra query — see the call sites in /mobile/location,
+ * /mobile/attendance/today, /mobile/dashboard and /mobile/attendance/check-in.
+ *
+ * The session is closed *at the cap instant*, not at "now", so the credited time
+ * and the stored timestamp agree. Leaving it open until the rule is noticed
+ * would pay for the overshoot.
+ */
+export async function autoCloseAtMaxHours(opts: {
+  attendanceId: string;
+  checkIn: Date;
+  capAt: Date;
+  employeeId: string;
+  companyId: string;
+  userId?: string | null;
+  projectName?: string | null;
+}): Promise<void> {
+  const workingMins = MAX_WORKING_HOURS_HARD_CAP * 60;
+  const now = new Date();
+
+  await db.attendance.update({
+    where: { id: opts.attendanceId },
+    data: {
+      checkOut: opts.capAt,
+      checkOutServerReceivedAt: now,
+      checkOutDeviceId: "AUTO_MAX_HOURS",
+      workingMins,
+      sessionStatus: "COMPLETED",
+      verificationStatus: "FLAGGED",
+      notes:
+        `Closed automatically after reaching the ${MAX_WORKING_HOURS_HARD_CAP}-hour ` +
+        `maximum working time for a single session. No check-out was recorded by ` +
+        `the employee. Please review.`,
+    },
+  });
+
+  await db.notification.create({
+    data: {
+      // Addressed to the employee; the record itself is FLAGGED, which is how
+      // it reaches the supervisor's review queue.
+      userId: opts.userId ?? null,
+      companyId: opts.companyId,
+      type: "ALERT",
+      title: "Shift closed at the maximum working time",
+      description:
+        `Your session at ${opts.projectName ?? "a project"} was closed automatically ` +
+        `after ${MAX_WORKING_HOURS_HARD_CAP} hours. Any time beyond that was not ` +
+        `recorded. Please check out before then next time.`,
+    },
+  });
+}
+
+/**
  * Ceiling on time credited to a session closed without the employee.
  *
  * Without this, a forgotten session left open over a long weekend would be

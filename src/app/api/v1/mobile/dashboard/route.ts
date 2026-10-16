@@ -10,6 +10,8 @@ import {
   nowInTimezone,
   resolveTimezone,
   formatDateInTimezone,
+  maxWorkingCapInstant,
+  autoCloseAtMaxHours,
 } from "@/lib/v1";
 
 export const runtime = "nodejs";
@@ -80,9 +82,36 @@ export async function GET(req: Request) {
 
     const maxGpsAccuracy = Number(accuracySetting?.value ?? 50) || 50;
 
-    const todayAttendance =
+    let todayAttendance =
       todaySessions.find((s) => s.checkIn && !s.checkOut) ??
       todaySessions[0];
+
+    // Maximum working time. The dashboard is the app's first screen, so this is
+    // where an employee who closed the app and came back later is told the truth
+    // — the tracking ping loop is not running to notice it. The session is
+    // already loaded by the parallel batch above, so it costs no extra query.
+    const openToday = todaySessions.find((s) => s.checkIn && !s.checkOut);
+    let autoClosedAtCap = false;
+    if (openToday?.checkIn) {
+      const capAt = maxWorkingCapInstant(openToday.checkIn);
+      if (capAt) {
+        await autoCloseAtMaxHours({
+          attendanceId: openToday.id,
+          checkIn: openToday.checkIn,
+          capAt,
+          employeeId: employee.id,
+          companyId: employee.companyId,
+          projectName: openToday.project?.name,
+        });
+        autoClosedAtCap = true;
+        // Reflect the closure in the response rather than showing "WORKING" for
+        // a session that no longer exists.
+        openToday.checkOut = capAt;
+        openToday.sessionStatus = "COMPLETED";
+        openToday.workingMins = Math.round((capAt.getTime() - openToday.checkIn.getTime()) / 60000);
+      }
+    }
+
     const closedMinutes = todaySessions
       .filter((s) => s.checkIn && s.checkOut)
       .reduce((sum, s) => sum + (s.workingMins ?? 0), 0);
@@ -111,6 +140,9 @@ export async function GET(req: Request) {
         // from its check-in timestamp.
         workingMinutes: closedMinutes,
         sessionCount: todaySessions.length,
+        ...(autoClosedAtCap
+          ? { autoCheckedOut: true, autoCheckoutReason: "MAX_WORKING_HOURS" }
+          : {}),
         attendanceId: todayAttendance.id,
         insideGeofence: todayAttendance.insideGeofence,
         verificationStatus: todayAttendance.verificationStatus,

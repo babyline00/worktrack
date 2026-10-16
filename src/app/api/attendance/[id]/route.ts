@@ -4,6 +4,16 @@ import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { auditLog } from "@/lib/v1";
 
+/**
+ * Sanity ceiling for a manually entered duration (24 hours).
+ *
+ * Looser than the 8-hour auto cap on purpose: that cap stops a forgotten
+ * check-out quietly becoming a payslip, which is not what a supervisor
+ * correcting a record is doing. This only rejects values that cannot be real —
+ * a 40-hour "session" is a typo, not a shift.
+ */
+const MAX_MANUAL_WORKING_MINS = 24 * 60;
+
 // PATCH /api/attendance/:id
 // Manually adjust a record from the admin web UI.
 //
@@ -39,10 +49,10 @@ export async function PATCH(
 
     const checkIn = body.checkInAt ? new Date(body.checkInAt) : null;
     const checkOut = body.checkOutAt ? new Date(body.checkOutAt) : null;
-    if (checkIn && isNaN(checkIn.getTime())) {
+    if (body.checkInAt && isNaN(checkIn!.getTime())) {
       return NextResponse.json({ error: "Invalid check-in time" }, { status: 400 });
     }
-    if (checkOut && isNaN(checkOut.getTime())) {
+    if (body.checkOutAt && isNaN(checkOut!.getTime())) {
       return NextResponse.json({ error: "Invalid check-out time" }, { status: 400 });
     }
     if (checkIn && checkOut && checkOut < checkIn) {
@@ -56,16 +66,27 @@ export async function PATCH(
       checkIn: att.checkIn?.toISOString() ?? null,
       checkOut: att.checkOut?.toISOString() ?? null,
       workingMinutes: att.workingMins,
+      sessionStatus: att.sessionStatus,
     };
 
+    // Explicit nulls are meaningful — an admin closing a session they left open
+    // sends `checkOutAt: null`. Truthiness checks swallowed that, so the button
+    // silently did nothing.
+    const hasCheckIn = "checkInAt" in body;
+    const hasCheckOut = "checkOutAt" in body;
+    const hasWorking = "workingMinutes" in body && body.workingMinutes !== null;
+
     const data: any = { verificationStatus: "FLAGGED" };
-    if (checkIn) data.checkIn = checkIn;
-    if (checkOut) data.checkOut = checkOut;
-    if (body.workingMinutes !== undefined && body.workingMinutes !== null) {
+    if (hasCheckIn) data.checkIn = checkIn;
+    if (hasCheckOut) data.checkOut = checkOut;
+
+    if (hasWorking) {
       const mins = Number(body.workingMinutes);
-      if (!Number.isFinite(mins) || mins < 0) {
+      if (!Number.isFinite(mins) || mins < 0 || mins > MAX_MANUAL_WORKING_MINS) {
         return NextResponse.json(
-          { error: "Working minutes must be a positive number" },
+          {
+            error: `Working minutes must be between 0 and ${MAX_MANUAL_WORKING_MINS} (24 hours)`,
+          },
           { status: 400 },
         );
       }
@@ -76,9 +97,12 @@ export async function PATCH(
         Math.round((checkOut.getTime() - checkIn.getTime()) / 60000),
       );
     }
-    // An open session that has been given a check-out is now finished.
-    if (data.checkOut || data.workingMins !== undefined) {
-      data.sessionStatus = "COMPLETED";
+
+    // Keep the lifecycle consistent with the times. Editing the times on a row
+    // that still said WORKING left the dashboard reporting a session state that
+    // no longer matched the record.
+    if (hasCheckIn || hasCheckOut) {
+      data.sessionStatus = checkIn && !checkOut ? "WORKING" : "COMPLETED";
     }
 
     const updated = await db.attendance.update({ where: { id }, data });
