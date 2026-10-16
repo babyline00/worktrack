@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { requireCompanyRole, CONFIG_WRITE_ROLES } from "@/lib/api-auth";
 import { db } from "@/lib/db";
-import { haversineMeters } from "@/lib/v1";
+import { haversineMeters, startOfDayInTimezone } from "@/lib/v1";
 
 /** The fields a session row contributes to one check-in / check-out leg. */
 type SessionLegSource = {
@@ -75,9 +75,19 @@ export async function GET(req: Request) {
   // below run in a loop, which made that expensive as well as pointless.
   const search = (url.searchParams.get("search") ?? "").trim();
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  // `attendanceDate` is midnight in the company's timezone stored as a UTC
+  // instant. Computing "today" from new Date() (server UTC) returned a UTC
+  // midnight that for a Karachi company sits five hours ahead of the real day
+  // start, so every session of the tenant's "today" was filtered out and the
+  // Live Attendance tab showed the whole staff as absent. Same bug class as
+  // the admin attendance route, fixed the same way.
+  const company = await db.company.findUnique({
+    where: { id: companyId },
+    select: { timezone: true },
+  });
+  const tz = company?.timezone ?? "Asia/Karachi";
+  const today = startOfDayInTimezone(tz, new Date());
+  const monthStart = startOfDayInTimezone(tz, new Date(today.getFullYear(), today.getMonth(), 1, 12));
 
   const employees = await db.employee.findMany({
     where: {
