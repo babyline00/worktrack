@@ -123,7 +123,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           const DashboardTab(),
           const AttendanceHistoryTab(),
           LeaveTab(key: _leaveKey),
-          const ProfileTab(),
+          // const ProfileTab(),
         ],
       ),
       bottomNavigationBar: BottomNavigationBar(

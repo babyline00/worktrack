@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Cache } from "@/lib/cache";
+import { startOfDayInTimezone } from "@/lib/v1";
 
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
@@ -18,10 +19,18 @@ export async function GET(req: Request) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
+  // Get company timezone for accurate "today" calculation
+  const company = await db.company.findUnique({
+    where: { id: companyId },
+    select: { timezone: true },
+  });
+  const tz = company?.timezone ?? "Asia/Karachi";
+  const todayTz = startOfDayInTimezone(tz, new Date());
+
   // Try cache first (15 second TTL for dashboard). The day is part of the key:
   // without it, a dashboard opened after midnight kept serving yesterday's
   // numbers until the TTL entries expired on their own.
-  const cacheKey = `dashboard:${companyId}:${today.toDateString()}:trend${clampedDays}`;
+  const cacheKey = `dashboard:${companyId}:${todayTz.toDateString()}:trend${clampedDays}`;
   const cached = await Cache.get(cacheKey);
   if (cached) return NextResponse.json(cached);
 
@@ -29,7 +38,7 @@ export async function GET(req: Request) {
 
   // Get today's attendance with employee + project + latest location
   const presentRecords = await db.attendance.findMany({
-    where: { attendanceDate: today, employee: { companyId, status: "ACTIVE" } },
+    where: { attendanceDate: todayTz, employee: { companyId, status: "ACTIVE" } },
     include: {
       employee: true,
       project: true,
@@ -38,7 +47,7 @@ export async function GET(req: Request) {
   });
 
   const leaveToday = await db.leaveRequest.findMany({
-    where: { status: "APPROVED", fromDate: { lte: today }, toDate: { gte: today }, employee: { companyId } },
+    where: { status: "APPROVED", fromDate: { lte: todayTz }, toDate: { gte: todayTz }, employee: { companyId } },
     include: { employee: true },
   });
 

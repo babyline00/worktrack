@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import bcrypt from "bcryptjs";
+import { startOfDayInTimezone } from "@/lib/v1";
 
 const FIRST_NAMES = [
   "Ahmad", "Ali", "Hamza", "Bilal", "Usman", "Sana", "Ayesha", "Hassan",
@@ -91,7 +92,8 @@ async function main() {
     const last = LAST_NAMES[(i * 3) % LAST_NAMES.length];
     const proj = projects[i % projects.length];
     const dept = departments[i % departments.length];
-    const empId = String(2585436360 + i);
+    // Generate employee ID in MJ-XXXXXXXXX format (MJ + 9 digits)
+    const empId = `MJ-${String(123456789 + i).padStart(9, '0')}`;
 
     const emp = await db.employee.upsert({
       where: { companyId_empId: { companyId: company.id, empId } },
@@ -162,8 +164,9 @@ async function main() {
   });
   await db.notification.deleteMany({ where: { companyId: company.id } });
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  // Use the company's timezone for "today" to match what the API queries
+  const companyTz = company.timezone ?? "Asia/Karachi";
+  const today = startOfDayInTimezone(companyTz, new Date());
   const shift = await db.shift.findFirst({ where: { companyId: company.id } });
   const statuses = ["PRESENT", "PRESENT", "PRESENT", "LATE", "PRESENT", "ON_LEAVE", "ABSENT"];
 
@@ -269,7 +272,7 @@ async function main() {
   console.log("   Admin login: admin@worktrack.io / admin123");
   console.log("   Employee login (mobile API):");
   console.log("     companyCode: WT001");
-  console.log("     employeeId: 2585436361");
+  console.log("     employeeId: MJ-123456790");
   console.log("     password: employee123");
 }
 

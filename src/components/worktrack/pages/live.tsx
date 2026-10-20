@@ -13,6 +13,11 @@ import {
   Navigation,
   User as UserIcon,
   ImageOff,
+  LogIn,
+  LogOut,
+  UserCheck,
+  UserX,
+  AlertCircle,
 } from "lucide-react";
 import { useEmployees, useDashboard, useProjects, type AttendanceLeg } from "@/lib/hooks";
 import { useApp } from "@/lib/store";
@@ -42,6 +47,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn, attendancePhotoUrl } from "@/lib/utils";
 import { toast } from "sonner";
 import { useRealtimeUpdates } from "@/lib/realtime";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 /** Sentinel for "no project filter". Not a project name — real names come
  *  from the database below. */
@@ -75,6 +87,9 @@ export function LiveAttendancePage() {
   const [status, setStatus] = useState("All Status");
   const [lastUpdate, setLastUpdate] = useState(0);
   const [showLiveMap, setShowLiveMap] = useState(false);
+  // Admin check-in/out state
+  const [adminAction, setAdminAction] = useState<{ type: "checkin" | "checkout"; employee: any } | null>(null);
+  const [isAdminLoading, setIsAdminLoading] = useState(false);
 
   const onUpdate = useCallback(() => {
     refetch();
@@ -85,6 +100,102 @@ export function LiveAttendancePage() {
 
   const employees = empData?.employees ?? [];
   const projects = projData?.projects ?? [];
+
+  // Admin check-in/out functions
+  const handleAdminCheckIn = useCallback(async (employee: typeof employees[0]) => {
+    // Allow check-in even if already checked in (will create new session or use admin override)
+    const projectIdToUse = employee.projectIds?.[0];
+    if (!projectIdToUse) {
+      toast.error("Employee has no assigned project");
+      return;
+    }
+    // Use project coordinates or employee's last known location
+    const project = projects.find(p => p.id === projectIdToUse);
+    if (!project?.coords?.lat || !project?.coords?.lng) {
+      toast.error("Project has no coordinates configured");
+      return;
+    }
+    setAdminAction({ type: "checkin", employee });
+  }, [employees, projects]);
+
+  const handleAdminCheckOut = useCallback(async (employee: typeof employees[0]) => {
+    // Allow check-out even if not currently "working" - use admin override
+    try {
+      const res = await fetch(`/api/attendance?employeeId=${employee.id}&status=working`, {
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (!data.success || !data.data?.length) {
+        // Try to find any recent session to check out
+        const res2 = await fetch(`/api/attendance?employeeId=${employee.id}&limit=1`, {
+          credentials: "include",
+        });
+        const data2 = await res2.json();
+        if (!data2.success || !data2.data?.length) {
+          toast.error("No session found to check out");
+          return;
+        }
+        const attendance = data2.data[0];
+        if (attendance.sessionStatus === "COMPLETED" || attendance.sessionStatus === "COMPLETED") {
+          // Session already completed - ask if they want to force check-out
+          // For now, we'll allow force check-out via admin override
+        }
+        setAdminAction({ type: "checkout", employee: { ...employee, attendanceId: attendance.id, projectCoords: project?.coords } });
+        return;
+      }
+      const attendance = data.data[0];
+      // Use project coordinates or employee's last known location
+      const project = projects.find(p => p.id === attendance.projectId);
+      setAdminAction({ type: "checkout", employee: { ...employee, attendanceId: attendance.id, projectCoords: project?.coords } });
+    } catch {
+      toast.error("Failed to find open session");
+    }
+  }, [employees, projects]);
+
+  const executeAdminAction = useCallback(async (lat: number, lng: number, accuracy: number) => {
+    if (!adminAction) return;
+    setIsAdminLoading(true);
+    try {
+      const endpoint = "/api/v1/admin/attendance/override";
+      const action = adminAction.type === "checkin" ? "check_in" : "check_out";
+      const body = adminAction.type === "checkin"
+        ? { 
+            employeeId: adminAction.employee.id, 
+            projectId: adminAction.employee.projectIds?.[0], 
+            latitude: lat, 
+            longitude: lng, 
+            accuracy,
+            action: "check_in"
+          }
+        : { 
+            attendanceId: (adminAction.employee as any).attendanceId, 
+            latitude: lat, 
+            longitude: lng, 
+            accuracy,
+            action: "check_out"
+          };
+
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(`${adminAction.type === "checkin" ? "Checked in" : "Checked out"} ${adminAction.employee.firstName} ${adminAction.employee.lastName}`);
+        setAdminAction(null);
+        refetch();
+        refetchDash();
+      } else {
+        toast.error(data.error?.message || "Action failed");
+      }
+    } catch {
+      toast.error("Network error");
+    } finally {
+      setIsAdminLoading(false);
+    }
+  }, [adminAction, refetch, refetchDash]);
 
   // Projects that actually have someone assigned to them, ordered as returned.
   // Listing every project would fill the dropdown with sites nobody works at,
@@ -266,7 +377,7 @@ export function LiveAttendancePage() {
                   <th className="hidden px-4 py-3 font-medium lg:table-cell">Location</th>
                   <th className="px-4 py-3 font-medium">Status</th>
                   <th className="hidden px-4 py-3 font-medium lg:table-cell">Last Updated</th>
-                  <th className="px-4 py-3 font-medium">Action</th>
+                  <th className="px-4 py-3 font-medium">Admin Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -297,7 +408,28 @@ export function LiveAttendancePage() {
                     <td className="px-4 py-3"><StatusPill status={e.todaysStatus as any} /></td>
                     <td className="hidden px-4 py-3 text-xs text-muted-foreground lg:table-cell">{e.lastUpdatedSec}s ago</td>
                     <td className="px-4 py-3">
-                      <Button variant="ghost" size="sm" onClick={(ev) => { ev.stopPropagation(); setDrawerEmployee(e.id); }}>View</Button>
+                      <div className="flex items-center gap-1">
+                        <Button variant="ghost" size="sm" onClick={(ev) => { ev.stopPropagation(); setDrawerEmployee(e.id); }}>View</Button>
+                        {e.todaysStatus === "working" ? (
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={(ev) => { ev.stopPropagation(); handleAdminCheckOut(e); }}
+                            disabled={isAdminLoading}
+                          >
+                            <LogOut size={12} className="mr-1" /> Check Out
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="default"
+                            size="sm"
+                            onClick={(ev) => { ev.stopPropagation(); handleAdminCheckIn(e); }}
+                            disabled={isAdminLoading || !e.projectIds?.length}
+                          >
+                            <LogIn size={12} className="mr-1" /> Check In
+                          </Button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -393,11 +525,122 @@ export function LiveAttendancePage() {
                     {showLiveMap ? "Hide Map" : "Live Map"}
                   </Button>
                 </div>
+
+                {/* Admin Check-In/Out from drawer */}
+                <div className="grid grid-cols-2 gap-2 pt-2">
+                  {drawerEmp.todaysStatus === "working" ? (
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => {
+                        setDrawerEmployee(null);
+                        handleAdminCheckOut(drawerEmp);
+                      }}
+                      disabled={isAdminLoading}
+                      className="h-10"
+                    >
+                      <LogOut size={12} className="mr-1" /> Check Out
+                    </Button>
+                  ) : drawerEmp.projectIds?.length ? (
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={() => {
+                        setDrawerEmployee(null);
+                        handleAdminCheckIn(drawerEmp);
+                      }}
+                      disabled={isAdminLoading}
+                      className="h-10"
+                    >
+                      <LogIn size={12} className="mr-1" /> Check In
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled
+                      className="h-10"
+                    >
+                      No Project
+                    </Button>
+                  )}
+                </div>
               </div>
             </>
           )}
         </SheetContent>
       </Sheet>
+
+      {/* Admin Check-In/Out Confirmation Dialog */}
+      {adminAction && (
+        <Dialog open={true} onOpenChange={(open) => !open && setAdminAction(null)}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>
+                {adminAction.type === "checkin" ? (
+                  <>Admin Check-In: <span className="font-normal">{adminAction.employee.firstName} {adminAction.employee.lastName}</span></>
+                ) : (
+                  <>Admin Check-Out: <span className="font-normal">{adminAction.employee.firstName} {adminAction.employee.lastName}</span></>
+                )}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary">
+                  Admin Action
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {adminAction.type === "checkin"
+                    ? "Employee will be marked as working"
+                    : "Session will be closed"}
+                </span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                {adminAction.type === "checkin"
+                  ? "Confirm check-in using project location."
+                  : "Confirm check-out using employee's last known location."}
+              </p>
+              <div>
+                <label className="text-xs text-muted-foreground block mb-1">GPS Accuracy (meters)</label>
+                <Input
+                  type="number"
+                  defaultValue={adminAction.type === "checkin"
+                    ? "10"
+                    : adminAction.employee.accuracyM?.toString() || "10"}
+                  placeholder="GPS Accuracy"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2 border-t border-border">
+                <Button variant="outline" onClick={() => setAdminAction(null)} disabled={isAdminLoading}>
+                  Cancel
+                </Button>
+                <Button
+                  variant={adminAction.type === "checkin" ? "default" : "destructive"}
+                  onClick={() => {
+                    const lat = adminAction.type === "checkin"
+                      ? adminAction.employee.projectCoords?.lat || adminAction.employee.coords?.lat || 0
+                      : adminAction.employee.coords?.lat || 0;
+                    const lng = adminAction.type === "checkin"
+                      ? adminAction.employee.projectCoords?.lng || adminAction.employee.coords?.lng || 0
+                      : adminAction.employee.coords?.lng || 0;
+                    const acc = 10;
+                    if (lat && lng) executeAdminAction(lat, lng, acc);
+                  }}
+                  disabled={isAdminLoading}
+                >
+                  {isAdminLoading ? (
+                    <>Processing... <RefreshCw size={14} className="ml-2 animate-spin" /></>
+                  ) : adminAction.type === "checkin" ? (
+                    <>Confirm Check-In <UserCheck size={14} className="ml-2" /></>
+                  ) : (
+                    <>Confirm Check-Out <UserX size={14} className="ml-2" /></>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

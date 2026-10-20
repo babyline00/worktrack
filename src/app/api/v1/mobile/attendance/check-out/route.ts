@@ -61,7 +61,26 @@ export async function POST(req: Request) {
     if (!attendance) throw ERRORS.NOT_FOUND("Attendance record not found");
     if (attendance.employeeId !== employee.id) throw ERRORS.FORBIDDEN();
     if (!attendance.checkIn) throw ERRORS.NOT_CHECKED_IN();
-    if (attendance.checkOut) throw ERRORS.ALREADY_CHECKED_OUT();
+    if (attendance.checkOut) {
+      // Session already completed - return existing record instead of error
+      return apiSuccess({
+        attendance: {
+          id: attendance.id,
+          status: attendance.sessionStatus,
+          checkInAt: attendance.checkIn?.toISOString(),
+          checkOutAt: attendance.checkOut?.toISOString(),
+          workingMinutes: attendance.workingMins,
+          workingTime: formatMins(attendance.workingMins),
+          checkOutPhoto: attendance.checkOutPhotoId
+            ? `/api/v1/attendance/photo/${attendance.checkOutPhotoId}`
+            : null,
+          insideGeofence: attendance.insideGeofence,
+          distanceFromProject: attendance.distanceFromProject,
+          verificationStatus: attendance.verificationStatus,
+          message: "Session already completed",
+        },
+      });
+    }
 
     // Photo validation
     if (!photoFile.type.startsWith("image/")) throw ERRORS.VALIDATION("Photo must be an image");
@@ -156,15 +175,33 @@ export async function POST(req: Request) {
       data: {
         attendance: {
           id: updated.id,
-          status: updated.sessionStatus,
-          checkInAt: updated.checkIn?.toISOString(),
-          checkOutAt: updated.checkOut?.toISOString(),
-          workingMinutes: workingMins,
-          workingTime: formatMins(workingMins),
-          checkOutPhoto: storedPhoto.photoUrl,
-          insideGeofence: !isOutside,
-          distanceFromProject: distance,
+          employeeId: updated.employeeId,
+          projectId: updated.projectId,
+          shiftId: updated.shiftId,
+          attendanceDate: updated.attendanceDate.toISOString(),
+          checkIn: updated.checkIn?.toISOString() ?? null,
+          checkOut: updated.checkOut?.toISOString() ?? null,
+          checkInLat: updated.checkInLat,
+          checkInLng: updated.checkInLng,
+          checkInAccuracy: updated.checkInAccuracy,
+          checkInLocation: updated.checkInLocation,
+          checkInCapturedAt: updated.checkInCapturedAt?.toISOString() ?? null,
+          checkInServerReceivedAt: updated.checkInServerReceivedAt?.toISOString() ?? null,
+          checkOutLat: updated.checkOutLat,
+          checkOutLng: updated.checkOutLng,
+          checkOutAccuracy: updated.checkOutAccuracy,
+          checkOutLocation: updated.checkOutLocation,
+          checkOutCapturedAt: updated.checkOutCapturedAt?.toISOString() ?? null,
+          checkOutServerReceivedAt: updated.checkOutServerReceivedAt?.toISOString() ?? null,
+          workingMins: updated.workingMins,
+          lateMins: updated.lateMins,
+          sessionStatus: updated.sessionStatus,
+          attendanceStatus: updated.attendanceStatus,
           verificationStatus: updated.verificationStatus,
+          insideGeofence: updated.insideGeofence,
+          distanceFromProject: updated.distanceFromProject,
+          checkInPhotoId: updated.checkInPhotoId,
+          checkOutPhotoId: updated.checkOutPhotoId,
         },
         geofenceWarning: isOutside
           ? `You checked out ${distance}m outside the project area (allowed: ${projectRadius}m). This has been flagged for admin review.`

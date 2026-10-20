@@ -21,8 +21,14 @@ export async function storeAttendancePhoto(opts: {
   employeeEmpId: string;
   capturedAt?: Date | null;
 }) {
+  // Pre-generate the photo ID to avoid the second DB write for photoUrl.
+  // Use a CUID-like prefix + timestamp + random for uniqueness.
+  const photoId = `photo_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  const photoUrl = `/api/v1/attendance/photo/${photoId}`;
+
   const photo = await db.attendancePhoto.create({
     data: {
+      id: photoId,
       attendanceId: opts.attendanceId,
       type: opts.type,
       // Stable, human-inspectable key even though nothing is written to disk.
@@ -32,13 +38,9 @@ export async function storeAttendancePhoto(opts: {
       capturedAt: opts.capturedAt ?? null,
       // Prisma wants a Uint8Array view; Buffer satisfies that at runtime.
       data: new Uint8Array(opts.buffer),
-      photoUrl: "",
+      photoUrl,
     },
   });
-
-  // photoUrl embeds the row id, so it can only be filled in after the insert.
-  const photoUrl = `/api/v1/attendance/photo/${photo.id}`;
-  await db.attendancePhoto.update({ where: { id: photo.id }, data: { photoUrl } });
 
   return { id: photo.id, photoUrl, fileSize: photo.fileSize, storageKey: photo.storageKey };
 }

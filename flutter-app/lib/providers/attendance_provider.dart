@@ -104,8 +104,30 @@ class AttendanceProvider extends ChangeNotifier {
     // loadTodayAttendance()` here, which put a second HTTP request in series
     // behind the first — roughly 1.2s of pure waiting on every cold start, on
     // every resume, and after every check-in and check-out.
+    //
+    // IMPORTANT: Do not overwrite _todayAttendance if we already have a
+    // WORKING session from a check-in/check-out response. The local state is
+    // the source of truth immediately after check-in/out; the dashboard API
+    // may return slightly stale data due to query timing, which would flip
+    // the UI back to "Not Checked In" incorrectly.
     final embedded = dashboard.today?.attendanceJson;
-    _todayAttendance = embedded != null ? Attendance.fromJson(embedded) : null;
+    final fromDashboard = embedded != null ? Attendance.fromJson(embedded) : null;
+
+    // Only update from dashboard if:
+    // 1. We don't have a session yet, OR
+    // 2. Our local session is NOT_STARTED/COMPLETED and dashboard has a WORKING one, OR
+    // 3. Dashboard has a newer COMPLETED session (check-out happened elsewhere)
+    if (_todayAttendance == null) {
+      _todayAttendance = fromDashboard;
+    } else if (_todayAttendance!.sessionStatus != 'WORKING' &&
+        fromDashboard?.sessionStatus == 'WORKING') {
+      _todayAttendance = fromDashboard;
+    } else if (fromDashboard?.sessionStatus == 'COMPLETED' &&
+        _todayAttendance!.sessionStatus != 'COMPLETED') {
+      // Server closed the session (auto check-out, admin adjustment, etc.)
+      _todayAttendance = fromDashboard;
+    }
+    // Otherwise keep our local WORKING session — it's fresher than the dashboard.
   }
 
   Future<void> loadTodayAttendance() async {
@@ -423,11 +445,12 @@ class AttendanceProvider extends ChangeNotifier {
       );
 
       if (response.data['success'] == true) {
-        // loadDashboard returns the updated session in its payload, so the
-        // follow-up /mobile/attendance/today call is no longer needed.
-        // Fresh, never cached: a cached "Not Checked In" shown straight after a
-        // successful check-in would be a lie.
-        await loadDashboard(allowCache: false);
+        // The check-in response already contains the full session data.
+        // Update local state directly instead of reloading dashboard.
+        final data = response.data['data'];
+        if (data['attendance'] != null) {
+          _todayAttendance = Attendance.fromJson(data['attendance']);
+        }
         _isCheckingIn = false;
         notifyListeners();
         return true;
@@ -494,7 +517,11 @@ class AttendanceProvider extends ChangeNotifier {
       if (response.data['success'] == true) {
         // Check for geofence warning
         _geofenceWarning = response.data['data']?['geofenceWarning'];
-        await loadDashboard(allowCache: false);
+        // Update local state directly from response
+        final data = response.data['data'];
+        if (data['attendance'] != null) {
+          _todayAttendance = Attendance.fromJson(data['attendance']);
+        }
         _isCheckingOut = false;
         notifyListeners();
         return true;
@@ -743,7 +770,14 @@ class AttendanceProvider extends ChangeNotifier {
   /// How often a live fix is pushed to the server. Position updates are frequent
   /// locally but throttled on the wire to keep the tracking record useful
   /// without flooding the API.
-  static const Duration _pushInterval = Duration(seconds: 30);
+  ///
+  /// Reduced from 30s to 10s for more responsive tracking. The server still
+  /// enforces its own rate limiting.
+  static const Duration _pushInterval = Duration(seconds: 10);
+
+  /// Minimum distance (meters) to trigger an immediate push outside the interval.
+  /// This ensures significant movements are sent immediately.
+  static const double _minPushDistanceMeters = 15;
 
   /// The position stream feeding the live session, when one is running.
   StreamSubscription<Position>? _positionSub;
@@ -849,17 +883,38 @@ class AttendanceProvider extends ChangeNotifier {
   }
 
   DateTime? _lastPush;
+  Position? _lastPushedPosition;
 
-  /// Pushes a location update at most once per [_pushInterval].
+  /// Pushes a location update at most once per [_pushInterval], or immediately
+  /// if the device has moved more than [_minPushDistanceMeters] meters.
   ///
   /// The underlying position stream fires far more often than the server needs,
   /// and an unconditional push on every fix would rate-limit the API.
   Future<void> _maybePush(Position position, String attendanceId) async {
     final last = _lastPush;
     final now = DateTime.now();
-    if (last != null && now.difference(last) < _pushInterval) return;
+
+    // Check if enough time has passed
+    final timeElapsed = last != null ? now.difference(last) : _pushInterval;
+    if (timeElapsed < _pushInterval) {
+      // Check if device moved significantly since last push
+      if (_lastPushedPosition != null) {
+        final distance = Geolocator.distanceBetween(
+          _lastPushedPosition!.latitude,
+          _lastPushedPosition!.longitude,
+          position.latitude,
+          position.longitude,
+        );
+        if (distance < _minPushDistanceMeters) {
+          return; // Not enough time AND not enough distance
+        }
+      } else {
+        return; // First push but not enough time elapsed
+      }
+    }
 
     _latestPosition = position;
+    _lastPushedPosition = position;
     _evaluateGeofence();
     notifyListeners();
 

@@ -137,34 +137,48 @@ class Attendance {
 
   /// Accepts either the `/mobile/attendance/today` envelope
   /// (`{ status, sessionCount, totalWorkingMinutes, attendance: {...} }`) or a
-  /// bare session object.
+  /// bare session object from check-in/check-out or dashboard.
   ///
-  /// The dashboard embeds the bare session under `today.attendance`. Reading it
-  /// through this parser as though it were an envelope produced a session with a
-  /// blank id, no coordinates and no check-in timestamp — so the live geofence
-  /// and timer would silently do nothing.
+  /// The check-in/check-out response now returns a full session object with
+  /// database field names (checkIn, checkOut, checkInLat, etc.), while the
+  /// dashboard uses formatted names (checkInAt, checkInTime, etc.). Handle both.
   factory Attendance.fromJson(Map<String, dynamic> json) {
     final nested = json['attendance'] as Map<String, dynamic>?;
     final att = nested ??
-        (json.containsKey('sessionStatus') || json.containsKey('checkInAt')
+        (json.containsKey('sessionStatus') ||
+                json.containsKey('checkInAt') ||
+                json.containsKey('checkIn')
             ? json
             : null);
     final project = att?['project'] as Map<String, dynamic>?;
+
+    // Support both field naming conventions:
+    // - Dashboard/today: checkInAt, checkOutAt, checkInTime, checkOutTime
+    // - Check-in/check-out response: checkIn, checkOut, checkInCapturedAt, etc.
+    final checkInAt = att?['checkInAt'] ?? att?['checkIn'] ?? att?['checkInCapturedAt'] ?? att?['checkInServerReceivedAt'];
+    final checkOutAt = att?['checkOutAt'] ?? att?['checkOut'] ?? att?['checkOutCapturedAt'] ?? att?['checkOutServerReceivedAt'];
+    final checkInTime = att?['checkInTime'] ?? (checkInAt != null ? _formatIsoToTime(checkInAt) : null);
+    final checkOutTime = att?['checkOutTime'] ?? (checkOutAt != null ? _formatIsoToTime(checkOutAt) : null);
+
+    // Distance might be int or double
+    final distance = att?['distanceFromProject'];
+    final distanceDouble = distance is num ? distance.toDouble() : null;
+
     return Attendance(
       id: att?['id'] ?? json['id'] ?? '',
       status: json['status'] ?? att?['sessionStatus'] ?? 'NOT_STARTED',
       projectName: project?['name'],
-      checkInAt: att?['checkInAt'],
-      checkOutAt: att?['checkOutAt'],
-      checkInTime: att?['checkInTime'],
-      checkOutTime: att?['checkOutTime'],
-      workingMinutes: att?['workingMinutes'] ?? 0,
-      lateMinutes: att?['lateMinutes'] ?? 0,
+      checkInAt: checkInAt,
+      checkOutAt: checkOutAt,
+      checkInTime: checkInTime,
+      checkOutTime: checkOutTime,
+      workingMinutes: att?['workingMinutes'] ?? att?['workingMins'] ?? 0,
+      lateMinutes: att?['lateMinutes'] ?? att?['lateMins'] ?? 0,
       sessionStatus: att?['sessionStatus'] ?? 'NOT_STARTED',
       attendanceStatus: att?['attendanceStatus'] ?? 'PENDING',
       verificationStatus: att?['verificationStatus'] ?? 'PENDING',
       insideGeofence: att?['insideGeofence'] ?? true,
-      distanceFromProject: att?['distanceFromProject'],
+      distanceFromProject: distanceDouble?.round(),
       checkInPhoto: att?['checkInPhoto'],
       checkOutPhoto: att?['checkOutPhoto'],
       projectLatitude: (project?['latitude'] as num?)?.toDouble() ??
@@ -175,8 +189,18 @@ class Attendance {
           (project?['radiusM'] as num?)?.toDouble(),
       sessionCount: json['sessionCount'] ?? 1,
       totalWorkingMinutes:
-          json['totalWorkingMinutes'] as int? ?? att?['workingMinutes'] ?? 0,
+          json['totalWorkingMinutes'] as int? ?? att?['workingMinutes'] ?? att?['workingMins'] ?? 0,
     );
+  }
+
+  static String? _formatIsoToTime(String iso) {
+    try {
+      final dt = DateTime.parse(iso).toLocal();
+      final h12 = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+      return '$h12:${dt.minute.toString().padLeft(2, '0')} ${dt.hour >= 12 ? 'PM' : 'AM'}';
+    } catch (_) {
+      return null;
+    }
   }
 }
 

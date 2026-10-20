@@ -21,6 +21,28 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 
   // Update employee fields
+  // Handle department - accept either departmentId or department name (like POST)
+  let departmentId: string | null | undefined = undefined;
+  if (body.departmentId !== undefined) {
+    const byId = await db.department.findFirst({
+      where: { id: String(body.departmentId), companyId },
+    });
+    departmentId = byId?.id ?? null;
+  } else if (body.department !== undefined) {
+    const name = String(body.department).trim();
+    if (name) {
+      const dept = await db.department.upsert({
+        where: { companyId_name: { companyId, name } },
+        update: {},
+        create: { name, companyId },
+      });
+      departmentId = dept.id;
+    } else {
+      departmentId = null;
+    }
+  }
+
+  // Update employee fields
   const updated = await db.employee.update({
     where: { id },
     data: {
@@ -31,6 +53,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       ...(body.designation !== undefined && { designation: body.designation }),
       ...(body.status !== undefined && { status: body.status.toUpperCase() }),
       ...(body.avatarColor !== undefined && { avatarColor: body.avatarColor }),
+      // Handle department - accept either departmentId or department name
+      ...(departmentId !== undefined && { departmentId }),
     },
   });
 

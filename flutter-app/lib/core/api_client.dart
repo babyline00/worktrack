@@ -1,4 +1,6 @@
 // Dio HTTP client with JWT interceptor + automatic token refresh
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'constants.dart';
@@ -13,6 +15,14 @@ class ApiException implements Exception {
 
   @override
   String toString() => message;
+}
+
+/// Entry for an in-flight request with timestamp for coalescing and cleanup.
+class _InFlightEntry {
+  final Future<Map<String, dynamic>> future;
+  final DateTime startedAt;
+
+  _InFlightEntry(this.future) : startedAt = DateTime.now();
 }
 
 class ApiClient {
@@ -97,16 +107,26 @@ class ApiClient {
   /// both reach for the dashboard. Each of those was a separate HTTP round trip
   /// against a database where one costs ~0.3-0.5s, so collapsing identical
   /// concurrent GETs into a single request is the cheapest speedup available.
-  final _inFlight = <String, Future<Map<String, dynamic>>>{};
+  final _inFlight = <String, _InFlightEntry>{};
 
-  static const _coalesceWindow = Duration(milliseconds: 800);
+  static const _coalesceWindow = Duration(milliseconds: 500);
+  static const _maxEntries = 50;
+  static const _cleanupInterval = Duration(seconds: 30);
+
+  Timer? _cleanupTimer;
 
   /// Key used to decide whether two GETs are the same request. Query order is
   /// normalised so `{a:1,b:2}` and `{b:2,a:1}` collapse together.
   static String _keyFor(String path, Map<String, dynamic>? query) {
     if (query == null || query.isEmpty) return path;
+    // Pre-allocate string buffer for efficiency
+    final buffer = StringBuffer(path)..write('?');
     final keys = query.keys.toList()..sort();
-    return '$path?${keys.map((k) => '$k=${query[k]}').join('&')}';
+    for (int i = 0; i < keys.length; i++) {
+      if (i > 0) buffer.write('&');
+      buffer.write('${keys[i]}=${query[keys[i]]}');
+    }
+    return buffer.toString();
   }
 
   Future<Map<String, dynamic>> get(
@@ -119,19 +139,44 @@ class ApiClient {
     final key = _keyFor(path, query);
 
     if (!fresh) {
-      final pending = _inFlight[key];
-      if (pending != null) return pending;
+      final entry = _inFlight[key];
+      if (entry != null) {
+        // Check if within coalesce window - if request is very recent, reuse it
+        if (DateTime.now().difference(entry.startedAt) < _coalesceWindow) {
+          return entry.future;
+        }
+        // Otherwise let it proceed with a fresh request
+      }
+    }
+
+    // Evict oldest entries if at capacity
+    if (_inFlight.length >= _maxEntries) {
+      final oldestKey = _inFlight.entries
+          .reduce((a, b) => a.value.startedAt.isBefore(b.value.startedAt) ? a : b)
+          .key;
+      _inFlight.remove(oldestKey);
     }
 
     final request = _performGet(path, query);
-    _inFlight[key] = request;
+    _inFlight[key] = _InFlightEntry(request);
+    _startCleanupTimer();
     try {
       return await request;
     } finally {
       // Cleared as soon as it settles. Anything longer would serve a stale
       // answer to a request made later.
-      if (identical(_inFlight[key], request)) _inFlight.remove(key);
+      if (identical(_inFlight[key]?.future, request)) _inFlight.remove(key);
     }
+  }
+
+  void _startCleanupTimer() {
+    _cleanupTimer?.cancel();
+    _cleanupTimer = Timer(_cleanupInterval, () {
+      final now = DateTime.now();
+      _inFlight.removeWhere((_, entry) =>
+          now.difference(entry.startedAt) > const Duration(minutes: 2));
+      if (_inFlight.isNotEmpty) _startCleanupTimer();
+    });
   }
 
   Future<Map<String, dynamic>> _performGet(

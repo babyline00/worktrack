@@ -19,7 +19,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { useApp } from "@/lib/store";
-import { useCheckin, useCheckout, useMyAttendance, useCreateLeave, useEmployees } from "@/lib/hooks";
+import { useMyAttendance, useCreateLeave, useEmployees } from "@/lib/hooks";
 import { Avatar, Card } from "./ui";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,6 +44,18 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 type MobileTab = "home" | "attendance" | "leave" | "profile";
+
+const V1_API_BASE = "/api/v1";
+
+async function getAuthToken(): Promise<string | null> {
+  // For the cookie-session admin UI, we can't use the v1 JWT endpoints directly
+  // The mobile app uses its own token storage. This view is embedded in the admin UI
+  // so it uses the cookie-session /api/attendance/checkin endpoints.
+  // BUT - the actual mobile Flutter app uses the v1 endpoints with JWT.
+  // This employee-mobile view is a web preview, so it uses cookie-session endpoints.
+  // The hooks useCheckin/useCheckout already call the correct cookie-session endpoints.
+  return null;
+}
 
 export function EmployeeMobileView() {
   const { setView } = useApp();

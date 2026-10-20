@@ -126,7 +126,36 @@ export async function POST(req: Request) {
       }
     }
 
-    if (openSession) throw ERRORS.ALREADY_CHECKED_IN();
+    if (openSession) {
+      // Allow check-in if there's an open session but it's been auto-closed or completed
+      if (openSession.sessionStatus === "COMPLETED" || openSession.sessionStatus === "CANCELLED") {
+        // Allow new check-in for a new session
+      } else {
+        // Check if it's a stale session from a previous day - auto-close it
+        const sessionAge = Date.now() - new Date(openSession.checkIn).getTime();
+        const maxSessionHours = 12;
+        if (sessionAge > maxSessionHours * 60 * 60 * 1000) {
+          // Auto-close stale session
+          await db.attendance.update({
+            where: { id: openSession.id },
+            data: {
+              checkOut: new Date(openSession.checkIn.getTime() + maxSessionHours * 60 * 60 * 1000),
+              checkOutLat: openSession.checkInLat,
+              checkOutLng: openSession.checkInLng,
+              checkOutAccuracy: openSession.checkInAccuracy,
+              checkOutLocation: openSession.checkInLocation,
+              checkOutServerReceivedAt: new Date(),
+              checkOutDeviceId: "SYSTEM-AUTO",
+              sessionStatus: "COMPLETED",
+              verificationStatus: "FLAGGED",
+              workingMins: maxSessionHours * 60,
+            },
+          });
+        } else {
+          throw ERRORS.ALREADY_CHECKED_IN();
+        }
+      }
+    }
 
     // 6. GPS accuracy (use company setting)
     const maxAccuracySetting = await db.setting.findUnique({
@@ -285,21 +314,33 @@ export async function POST(req: Request) {
       data: {
         attendance: {
           id: attendance.id,
-          status: attendance.sessionStatus,
+          employeeId: attendance.employeeId,
+          projectId: attendance.projectId,
+          shiftId: attendance.shiftId,
+          attendanceDate: attendance.attendanceDate.toISOString(),
+          checkIn: attendance.checkIn?.toISOString() ?? null,
+          checkOut: attendance.checkOut?.toISOString() ?? null,
+          checkInLat: attendance.checkInLat,
+          checkInLng: attendance.checkInLng,
+          checkInAccuracy: attendance.checkInAccuracy,
+          checkInLocation: attendance.checkInLocation,
+          checkInCapturedAt: attendance.checkInCapturedAt?.toISOString() ?? null,
+          checkInServerReceivedAt: attendance.checkInServerReceivedAt?.toISOString() ?? null,
+          checkOutLat: attendance.checkOutLat,
+          checkOutLng: attendance.checkOutLng,
+          checkOutAccuracy: attendance.checkOutAccuracy,
+          checkOutLocation: attendance.checkOutLocation,
+          checkOutCapturedAt: attendance.checkOutCapturedAt?.toISOString() ?? null,
+          checkOutServerReceivedAt: attendance.checkOutServerReceivedAt?.toISOString() ?? null,
+          workingMins: attendance.workingMins,
+          lateMins: attendance.lateMins,
+          sessionStatus: attendance.sessionStatus,
           attendanceStatus: attendance.attendanceStatus,
           verificationStatus: attendance.verificationStatus,
-          projectId: project.id,
-          projectName: project.name,
-          checkInAt: serverReceivedAt.toISOString(),
-          checkInPhoto: storedPhoto.photoUrl,
-          location: {
-            latitude,
-            longitude,
-            accuracy,
-            insideGeofence: attendance.insideGeofence,
-            distanceFromProject: distance,
-          },
-          lateMinutes: lateMins,
+          insideGeofence: attendance.insideGeofence,
+          distanceFromProject: attendance.distanceFromProject,
+          checkInPhotoId: attendance.checkInPhotoId,
+          checkOutPhotoId: attendance.checkOutPhotoId,
         },
       },
     };

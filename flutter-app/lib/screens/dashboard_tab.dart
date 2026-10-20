@@ -159,12 +159,14 @@ class _DashboardTabState extends State<DashboardTab> {
       context,
       MaterialPageRoute(builder: (_) => CheckInCameraScreen(project: project)),
     );
-    // Unwind to the dashboard so it refreshes into the working state. Bypasses
-    // the cache: a cached "Not Checked In" after a successful check-in would be
-    // exactly the wrong thing to show.
+    // The check-in response already updated _todayAttendance in the provider.
+    // No need to reload dashboard — the local session state is the source of truth.
+    // This avoids a potential race where the dashboard API returns stale data.
     if (!context.mounted) return;
     if (checkedIn == true) {
-      await context.read<AttendanceProvider>().loadDashboard(allowCache: false);
+      // Just notify to rebuild with the new session; dashboard data (projects, recent)
+      // doesn't change on check-in and can be refreshed on next pull-to-refresh.
+      context.read<AttendanceProvider>().notifyListeners();
     }
   }
 
@@ -368,23 +370,6 @@ class _DashboardTabState extends State<DashboardTab> {
                               : _formatMins(today?.totalWorkingMinutes ?? 0),
                         ),
                         const SizedBox(height: 20),
-
-                        // Verification section
-                        _VerificationSection(
-                          isNotStarted: isNotStarted,
-                          isWorking: isWorking,
-                          hasCheckInPhoto: (today?.checkInPhoto ?? '')
-                              .isNotEmpty,
-                          checkInTime: _formatTime(today?.checkInAt,
-                              preformatted: today?.checkInTime),
-                          insideGeofence: today?.insideGeofence ?? true,
-                        ),
-                        const SizedBox(height: 20),
-
-                        // Geofence indicator
-                        if (today != null)
-                          _GeofenceIndicator(insideGeofence: today.insideGeofence),
-                        const SizedBox(height: 16),
 
                         // Live device location
                         LiveLocationTile(
@@ -680,180 +665,4 @@ class _DetailRow extends StatelessWidget {
   }
 }
 
-// ============================================================
-// Verification section — photo, GPS, device, time
-// ============================================================
-class _VerificationSection extends StatelessWidget {
-  final bool isNotStarted;
-  final bool isWorking;
-  final bool hasCheckInPhoto;
-  final bool insideGeofence;
-  final String checkInTime;
 
-  const _VerificationSection({
-    required this.isNotStarted,
-    required this.isWorking,
-    required this.hasCheckInPhoto,
-    required this.insideGeofence,
-    required this.checkInTime,
-  });
-
-  /// True once a check-in has been recorded for the session.
-  bool get _hasCheckIn => isWorking || !isNotStarted;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('Verification', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
-        const SizedBox(height: 4),
-        Text(
-          _hasCheckIn ? 'Captured at check-in' : 'Captured when you check in',
-          style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
-        ),
-        const SizedBox(height: 12),
-        Card(
-          child: Column(
-            children: [
-              _VerifyRow(
-                icon: Icons.camera_alt_outlined,
-                label: 'Photo',
-                status: !_hasCheckIn
-                    ? 'Pending'
-                    : hasCheckInPhoto
-                        ? 'Captured'
-                        : 'Missing',
-                isVerified: hasCheckInPhoto,
-                isError: _hasCheckIn && !hasCheckInPhoto,
-              ),
-              const Divider(height: 1, indent: 56),
-              _VerifyRow(
-                icon: Icons.location_on_outlined,
-                label: 'GPS Location',
-                status: !_hasCheckIn
-                    ? 'Pending'
-                    : insideGeofence
-                        ? 'In range'
-                        : 'Out of range',
-                isVerified: _hasCheckIn && insideGeofence,
-                isError: _hasCheckIn && !insideGeofence,
-              ),
-              const Divider(height: 1, indent: 56),
-              _VerifyRow(
-                icon: Icons.phone_android_outlined,
-                label: 'Device Info',
-                status: _hasCheckIn ? 'Captured' : 'Pending',
-                isVerified: _hasCheckIn,
-              ),
-              const Divider(height: 1, indent: 56),
-              _VerifyRow(
-                icon: Icons.access_time,
-                label: 'Capture Time',
-                status: _hasCheckIn ? checkInTime : 'Pending',
-                isVerified: _hasCheckIn,
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _VerifyRow extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String status;
-  final bool isVerified;
-  final bool isError;
-
-  const _VerifyRow({
-    required this.icon,
-    required this.label,
-    required this.status,
-    required this.isVerified,
-    this.isError = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final statusColor = isVerified
-        ? AppColors.success
-        : isError
-            ? AppColors.danger
-            : AppColors.textMuted;
-    final statusBg = isVerified
-        ? AppColors.successSoft
-        : isError
-            ? AppColors.dangerSoft
-            : const Color(0xFFF1F5F9);
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Row(
-        children: [
-          Icon(icon, color: AppColors.textSecondary, size: 20),
-          const SizedBox(width: 16),
-          Expanded(child: Text(label, style: const TextStyle(fontSize: 14, color: AppColors.textPrimary))),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(color: statusBg, borderRadius: BorderRadius.circular(12)),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (isVerified || isError)
-                  Icon(isError ? Icons.priority_high : Icons.check,
-                      size: 12, color: statusColor),
-                if (isVerified || isError) const SizedBox(width: 4),
-                Text(status, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: statusColor)),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ============================================================
-// Geofence indicator
-// ============================================================
-class _GeofenceIndicator extends StatelessWidget {
-  final bool insideGeofence;
-
-  const _GeofenceIndicator({required this.insideGeofence});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: insideGeofence ? AppColors.successSoft : AppColors.dangerSoft,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: insideGeofence ? AppColors.success.withOpacity(0.3) : AppColors.danger.withOpacity(0.3)),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.location_on, color: insideGeofence ? AppColors.success : AppColors.danger, size: 20),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  insideGeofence ? 'Inside Project Area' : 'Outside Project Area',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: insideGeofence ? AppColors.success : AppColors.danger),
-                ),
-                Text(
-                  insideGeofence ? 'You are within the allowed geofence radius' : 'Please move to the project area',
-                  style: TextStyle(fontSize: 11, color: insideGeofence ? AppColors.success : AppColors.danger),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
